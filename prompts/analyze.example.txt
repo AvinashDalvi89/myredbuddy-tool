@@ -1,0 +1,33 @@
+Analyze engagement patterns from r/{subreddit}.
+
+Data:
+{posts_data}
+
+Find actionable patterns:
+
+1. WHAT WORKS
+   - Topics getting most upvotes
+   - Comment styles that perform
+   - Best posting times (if visible)
+
+2. TONE & STYLE
+   - Formal vs casual
+   - Technical depth expected
+   - Humor acceptable?
+
+3. SUCCESSFUL PATTERNS
+   - Common elements in top posts
+   - Comment structures that get upvoted
+   - How experts vs beginners engage
+
+4. WHAT TO AVOID
+   - Topics that get downvoted
+   - Phrases that trigger negativity
+   - Common mistakes newcomers make
+
+Provide specific, actionable insights with examples from the data.
+Format clearly with sections.
+
+---
+CUSTOMIZE: Add metrics that matter to you.
+Copy to analyze.txt and focus on your engagement goals.

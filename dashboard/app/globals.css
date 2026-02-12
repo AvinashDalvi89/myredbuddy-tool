@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0f0a08;
+  --foreground: #ededed;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0f0a08;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+.bg-gray-900\/80 {
+  background-color: #0f0a08;
+}
+
+/* Custom Scrollbar Styles */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #4a5568 transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #f97316 0%, #ea580c 100%);
+  border-radius: 3px;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #fb923c 0%, #f97316 100%);
+}
+
+/* Thin border scrollbar variant */
+.custom-scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #374151 transparent;
+}
+
+.custom-scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar-thin::-webkit-scrollbar-track {
+  background: rgba(55, 65, 81, 0.2);
+  border-radius: 2px;
+}
+
+.custom-scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 2px;
+  border: 1px solid rgba(75, 85, 99, 0.5);
+}
+
+.custom-scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}

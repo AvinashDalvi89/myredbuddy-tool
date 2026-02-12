@@ -1,0 +1,57 @@
+# Environment and secrets
+.env
+*.log
+api.log
+reddit_tokens.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# User data (don't commit your personal Reddit data)
+extracted_data.json
+persona.json
+removed_data.json
+removal_history.json
+competitor_*.json
+posts.json
+comments.json
+dashboard/public/data.json
+dashboard/public/recommendations.json
+reddit_framework.md
+
+# Keep examples
+!persona.example.json
+!extracted_data.example.json
+
+# Private prompts (your optimized versions - don't commit these)
+prompts/*.txt
+!prompts/README.md
+!prompts/*.example.txt
+config/prompts/
+*.secret.*
+
+# OS
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+.next/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Tool-specific
+.claude/
+.entire/
+
+# Lambda deployment (private - copy to landing page repo)
+lambda/

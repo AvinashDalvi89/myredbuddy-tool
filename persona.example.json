@@ -1,0 +1,55 @@
+{
+  "name": "Your Name",
+  "experience_years": 10,
+  "current_role": "Software Engineer",
+  "current_company": "Tech Company",
+
+  "expertise": {
+    "backend": ["Python", "Node.js", "Go"],
+    "frontend": ["React", "Vue"],
+    "databases": ["PostgreSQL", "Redis"],
+    "cloud": ["AWS", "GCP"],
+    "focus": ["system design", "scalability", "performance"]
+  },
+
+  "certifications": [
+    "AWS Certified Solutions Architect",
+    "Kubernetes Administrator"
+  ],
+
+  "community": {
+    "active_on": ["Reddit", "Stack Overflow", "GitHub"],
+    "blog_views": "10K+",
+    "speaker_talks": "5+"
+  },
+
+  "domains": ["e-commerce", "fintech", "healthcare"],
+
+  "real_experiences": [
+    "Reduced API latency from 2s to 100ms by implementing caching",
+    "Built system handling 10K requests/second",
+    "Led migration from monolith to microservices",
+    "Cut cloud costs by 40% using spot instances"
+  ],
+
+  "previous_companies": [
+    {"name": "Previous Co", "role": "Senior Engineer", "years": "2020-2024", "domain": "fintech"},
+    {"name": "First Job", "role": "Developer", "years": "2015-2020", "domain": "e-commerce"}
+  ],
+
+  "personality": {
+    "native_english": false,
+    "writing_style": "simple, direct, practical",
+    "perspective": "senior engineer who has seen production failures",
+    "values": ["pragmatic decisions", "cost awareness", "real-world tradeoffs"],
+    "avoids": ["hype", "over-engineering", "buzzwords without substance"]
+  },
+
+  "credibility_phrases": [
+    "In my 10 years",
+    "At my previous company",
+    "When I was building X",
+    "After dealing with production incidents",
+    "From my experience scaling systems"
+  ]
+}

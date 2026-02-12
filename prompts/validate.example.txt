@@ -1,0 +1,39 @@
+Review this Reddit draft before posting.
+
+Draft: {draft}
+Subreddit: r/{subreddit}
+Replying to: {original_post}
+
+Check for these issues:
+
+1. AI DETECTION RISKS
+   - Generic openers ("Great question!", "Thanks for sharing")
+   - Overly formal language
+   - Perfect grammar that feels unnatural
+   - Buzzwords and corporate speak
+
+2. SELF-PROMOTION
+   - Links to own content/products
+   - "Check out my..." patterns
+   - Subtle marketing language
+
+3. LOW EFFORT SIGNALS
+   - Too short (under 20 words)
+   - Doesn't address the post
+   - Generic advice anyone could give
+
+4. SUBREDDIT FIT
+   - Wrong tone for community
+   - Missing expected context
+
+Return JSON:
+{{
+  "score": 0-100,
+  "issues": ["list problems found"],
+  "suggestions": ["how to fix"],
+  "revised": "improved version if score < 70"
+}}
+
+---
+CUSTOMIZE: Add rules specific to subreddits you post in.
+Copy to validate.txt and add your known pitfalls.

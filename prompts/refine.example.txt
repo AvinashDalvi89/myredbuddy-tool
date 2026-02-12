@@ -1,0 +1,30 @@
+Improve this Reddit comment based on feedback.
+
+Original comment: {comment}
+Feedback: {feedback}
+Change type: {feedback_type}
+Subreddit: r/{subreddit}
+
+Revise while:
+- Keeping the core message intact
+- Addressing the specific feedback
+- Sounding natural (not AI-polished)
+- Matching subreddit expectations
+
+Common refinement types:
+- "shorter" - Cut to essential points
+- "more specific" - Add concrete details/examples
+- "less promotional" - Remove self-serving language
+- "friendlier" - Soften tone, add warmth
+- "more technical" - Add depth for expert audience
+
+Return:
+{{
+  "revised": "the improved comment",
+  "changes": "brief note on what changed",
+  "confidence": 0.0-1.0
+}}
+
+---
+CUSTOMIZE: Add your voice preferences.
+Copy to refine.txt and include examples of your style.

@@ -1,0 +1,40 @@
+{
+  "posts": [
+    {
+      "type": "post",
+      "subreddit": "programming",
+      "title": "How I reduced our API response time by 95%",
+      "content": "We had an API that was taking 2 seconds to respond. After profiling, I found the bottleneck was...",
+      "ups": 150,
+      "tones": ["experience_sharing", "technical"],
+      "topics": ["performance", "optimization"]
+    },
+    {
+      "type": "post",
+      "subreddit": "aws",
+      "title": "Switched from ECS to Lambda - here's what happened",
+      "content": "After running on ECS for 2 years, we migrated to Lambda. Cost went down 60% but...",
+      "ups": 89,
+      "tones": ["experience_sharing", "analytical"],
+      "topics": ["cloud", "serverless", "cost"]
+    }
+  ],
+  "comments": [
+    {
+      "type": "comment",
+      "subreddit": "ExperiencedDevs",
+      "content": "This happened to us too. The fix was adding proper connection pooling. We were creating new connections for every request which added 200ms overhead.",
+      "ups": 45,
+      "tones": ["helpful", "experience_sharing"],
+      "topics": ["databases", "performance"]
+    },
+    {
+      "type": "comment",
+      "subreddit": "programming",
+      "content": "Monorepo vs polyrepo debates are mostly about team structure, not code. If your teams are independent and rarely touch each other's code, polyrepo makes sense. If you have shared libraries and frequent cross-team collaboration, monorepo helps.",
+      "ups": 147,
+      "tones": ["balanced", "advisory"],
+      "topics": ["architecture", "team_dynamics"]
+    }
+  ]
+}

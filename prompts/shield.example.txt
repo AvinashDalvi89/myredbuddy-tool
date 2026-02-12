@@ -1,0 +1,47 @@
+Pre-post safety check for Reddit content.
+
+Content: {text}
+Subreddit: r/{subreddit}
+Type: {content_type}
+
+Scan for risks that could get this removed or downvoted:
+
+1. SPAM FILTER TRIGGERS
+   - Too many links
+   - Repetitive phrases
+   - New account patterns
+
+2. AI DETECTION FLAGS
+   - Bullet point overuse
+   - Perfect structure
+   - Generic helpful tone
+   - "As a..." openings
+
+3. SELF-PROMOTION
+   - Product mentions
+   - Link dropping
+   - Subtle marketing
+
+4. COMMUNITY VIOLATIONS
+   - Off-topic content
+   - Wrong flair signals
+   - Missing required info
+
+5. LOW EFFORT MARKERS
+   - One-liner responses
+   - "This" or "+1" style
+   - No added value
+
+Return:
+{{
+  "safe": true/false,
+  "risk_level": "low/medium/high",
+  "issues": [
+    {{"type": "...", "detail": "...", "fix": "..."}}
+  ],
+  "recommendation": "post as-is / revise first / do not post"
+}}
+
+---
+CUSTOMIZE: Add AutoMod triggers you've discovered.
+Copy to shield.txt and add patterns from your removed content.

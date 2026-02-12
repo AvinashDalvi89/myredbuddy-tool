@@ -1,0 +1,262 @@
+{
+  "_description": "Subreddit-specific rules and policies for RedBuddy",
+  "_usage": "These rules are loaded during validation and suggestion to ensure content fits each community",
+
+  "subreddits": {
+    "programming": {
+      "name": "r/programming",
+      "focus": "Programming news, discussion, and interesting code",
+      "rules": [
+        "No memes or low-effort content",
+        "Links must be directly related to programming",
+        "No career/job questions - use r/cscareerquestions",
+        "No basic beginner questions - use r/learnprogramming"
+      ],
+      "what_works": [
+        "Technical deep-dives with code examples",
+        "Experience sharing from production systems",
+        "Balanced comparisons of tools/languages",
+        "Insights from scaling or debugging"
+      ],
+      "what_fails": [
+        "Generic advice without specifics",
+        "Language wars or tribalism",
+        "Questions better suited for Stack Overflow"
+      ],
+      "tone": "technical, experienced, specific",
+      "typical_audience": "Professional developers, 5+ years experience"
+    },
+
+    "ExperiencedDevs": {
+      "name": "r/ExperiencedDevs",
+      "focus": "Discussion for developers with 3+ years of professional experience",
+      "rules": [
+        "Must have 3+ years professional experience to post",
+        "No student or bootcamp questions",
+        "No basic career questions",
+        "No recruiting or job posts"
+      ],
+      "what_works": [
+        "Senior-level perspective on architecture decisions",
+        "Real production war stories",
+        "Nuanced takes on tech leadership",
+        "Specific numbers and metrics"
+      ],
+      "what_fails": [
+        "Junior-level questions",
+        "Generic advice anyone could give",
+        "Complaining without insights",
+        "Short agreement comments"
+      ],
+      "tone": "senior, pragmatic, battle-tested",
+      "typical_audience": "Senior/Staff engineers, tech leads, architects"
+    },
+
+    "aws": {
+      "name": "r/aws",
+      "focus": "Amazon Web Services discussion and help",
+      "rules": [
+        "Be specific about your use case",
+        "Include relevant details (region, service, error messages)",
+        "No promotional content",
+        "Search before posting common questions"
+      ],
+      "what_works": [
+        "Cost optimization stories with numbers",
+        "Architecture decisions with tradeoffs",
+        "Real migration experiences",
+        "Specific service comparisons"
+      ],
+      "what_fails": [
+        "Vague questions without context",
+        "Basic questions answered in docs",
+        "Cost complaints without solutions"
+      ],
+      "tone": "technical, helpful, cost-aware",
+      "typical_audience": "Cloud engineers, DevOps, architects"
+    },
+
+    "ClaudeCode": {
+      "name": "r/ClaudeCode",
+      "focus": "Claude AI coding assistant discussion",
+      "rules": [
+        "Keep discussions relevant to Claude Code",
+        "Share prompts and techniques",
+        "Be constructive with feedback"
+      ],
+      "what_works": [
+        "Specific prompting techniques that worked",
+        "Workflow improvements and tips",
+        "Comparisons with other tools (fair)",
+        "Problem-solving approaches"
+      ],
+      "what_fails": [
+        "Generic AI hype",
+        "Complaints without constructive feedback",
+        "Off-topic AI discussions"
+      ],
+      "tone": "enthusiastic but practical, tip-sharing",
+      "typical_audience": "Developers using AI tools, early adopters"
+    },
+
+    "webdev": {
+      "name": "r/webdev",
+      "focus": "Web development discussion and help",
+      "rules": [
+        "No memes (use r/ProgrammerHumor)",
+        "No blatant self-promotion",
+        "Be respectful of all skill levels"
+      ],
+      "what_works": [
+        "Practical tutorials and guides",
+        "Tool/framework comparisons",
+        "Portfolio feedback with specifics",
+        "Industry trend analysis"
+      ],
+      "what_fails": [
+        "Gatekeeping or elitism",
+        "Framework wars",
+        "Low-effort 'which framework' questions"
+      ],
+      "tone": "helpful, inclusive, practical",
+      "typical_audience": "Mix of beginners to seniors, freelancers, agency devs"
+    },
+
+    "reactjs": {
+      "name": "r/reactjs",
+      "focus": "React.js discussion and help",
+      "rules": [
+        "Use code blocks for code",
+        "Include React version for issues",
+        "No job posts"
+      ],
+      "what_works": [
+        "Pattern explanations with examples",
+        "Performance optimization tips",
+        "State management comparisons",
+        "Real project experiences"
+      ],
+      "what_fails": [
+        "Questions without code",
+        "Basic questions covered in docs",
+        "Class vs hooks debates (overdone)"
+      ],
+      "tone": "helpful, code-focused, modern",
+      "typical_audience": "React developers, frontend engineers"
+    },
+
+    "node": {
+      "name": "r/node",
+      "focus": "Node.js discussion and help",
+      "rules": [
+        "Include Node version",
+        "Show error messages and code",
+        "No spam or self-promotion"
+      ],
+      "what_works": [
+        "Performance and scaling stories",
+        "Package comparisons",
+        "Best practices with reasoning",
+        "Security considerations"
+      ],
+      "what_fails": [
+        "Basic JavaScript questions",
+        "Questions without error details",
+        "'What package should I use' without context"
+      ],
+      "tone": "technical, helpful, practical",
+      "typical_audience": "Backend/fullstack Node developers"
+    },
+
+    "devops": {
+      "name": "r/devops",
+      "focus": "DevOps practices, tools, and culture",
+      "rules": [
+        "No basic sysadmin questions",
+        "Include context about your environment",
+        "No vendor spam"
+      ],
+      "what_works": [
+        "Pipeline and automation stories",
+        "Tool comparisons with real experience",
+        "Incident postmortems",
+        "Cost and efficiency improvements"
+      ],
+      "what_fails": [
+        "Basic Linux questions",
+        "Tool recommendations without context",
+        "Complaints about on-call without solutions"
+      ],
+      "tone": "pragmatic, automation-focused, experienced",
+      "typical_audience": "DevOps engineers, SREs, platform engineers"
+    },
+
+    "typescript": {
+      "name": "r/typescript",
+      "focus": "TypeScript language discussion",
+      "rules": [
+        "Include TypeScript version",
+        "Use code blocks",
+        "Show what you've tried"
+      ],
+      "what_works": [
+        "Type system tricks and patterns",
+        "Migration stories",
+        "Library typing solutions",
+        "Advanced type gymnastics explanations"
+      ],
+      "what_fails": [
+        "Basic 'any' type questions",
+        "JavaScript questions not TS-specific",
+        "'Should I use TypeScript' posts"
+      ],
+      "tone": "technical, type-nerdy, helpful",
+      "typical_audience": "TypeScript enthusiasts, typed language fans"
+    },
+
+    "softwarearchitecture": {
+      "name": "r/softwarearchitecture",
+      "focus": "Software architecture and system design",
+      "rules": [
+        "Include context about scale and constraints",
+        "No basic coding questions",
+        "Explain your current understanding"
+      ],
+      "what_works": [
+        "System design tradeoff discussions",
+        "Real-world architecture decisions",
+        "Pattern application stories",
+        "Scaling challenges and solutions"
+      ],
+      "what_fails": [
+        "Implementation-level questions",
+        "'Best architecture' without context",
+        "Theoretical without practical"
+      ],
+      "tone": "senior, thoughtful, tradeoff-aware",
+      "typical_audience": "Senior engineers, architects, tech leads"
+    }
+  },
+
+  "default": {
+    "name": "General",
+    "focus": "General subreddit",
+    "rules": [
+      "Follow subreddit-specific rules",
+      "Be respectful and constructive",
+      "Add value to discussions"
+    ],
+    "what_works": [
+      "Personal experience with specifics",
+      "Helpful and actionable advice",
+      "Balanced perspectives"
+    ],
+    "what_fails": [
+      "Short agreement without substance",
+      "Generic advice",
+      "Off-topic comments"
+    ],
+    "tone": "helpful, authentic, specific",
+    "typical_audience": "Varies by subreddit"
+  }
+}

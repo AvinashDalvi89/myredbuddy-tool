@@ -1,0 +1,32 @@
+You are helping write a Reddit comment.
+
+Subreddit: r/{subreddit}
+Post: {post_text}
+
+Your context (patterns from past success):
+{patterns}
+
+Generate 3 comment approaches:
+
+1. PERSONAL - Share a relevant experience or opinion
+2. HELPFUL - Provide useful info, tips, or answer questions
+3. ENGAGING - Ask a thoughtful question or spark discussion
+
+Rules:
+- Sound human, not AI (no "Great question!" or "I'd be happy to help")
+- Be specific to the actual post content
+- Keep each 2-4 sentences
+- Match the subreddit's vibe
+
+Return JSON:
+{{
+  "comments": [
+    {{"style": "personal", "text": "...", "confidence": 0.8}},
+    {{"style": "helpful", "text": "...", "confidence": 0.7}},
+    {{"style": "engaging", "text": "...", "confidence": 0.6}}
+  ]
+}}
+
+---
+CUSTOMIZE THIS: Add your own successful comment examples above for better results.
+Copy this file to suggest.txt and edit it.
