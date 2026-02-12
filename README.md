@@ -167,6 +167,8 @@ SHIELD_WEIGHT_LOW_EFFORT=15
 
 ## API Reference
 
+**Interactive Docs:** http://localhost:8000/docs (Swagger UI)
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Health check |
@@ -232,8 +234,7 @@ myredbuddy/
 │   └── prompts.py         # Prompt management
 ├── dashboard/             # Next.js frontend
 ├── prompts/               # Custom prompt templates
-├── profiles/              # User data (local)
-└── ROADMAP.md            # Development roadmap
+└── profiles/              # User data (local)
 ```
 
 ## Data Privacy
@@ -245,27 +246,13 @@ myredbuddy/
 
 ## Contributing
 
-PRs welcome! See `ROADMAP.md` for current priorities.
+PRs welcome! Open an issue to discuss before making major changes.
 
 ### Key Principles
 1. Every metric must have an action
 2. Actions should be one-click when possible
 3. Privacy first - local storage only
 4. Authentic engagement, not manipulation
-
-## Roadmap
-
-See [ROADMAP.md](ROADMAP.md) for detailed development plan.
-
-**Current Focus:**
-- Action-oriented dashboard
-- Shield as hero feature
-- Prompt customization system
-
-**Future:**
-- Browser extension
-- Subreddit rule database
-- Voice matching (write like you)
 
 ## License
 
