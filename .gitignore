@@ -22,6 +22,11 @@ comments.json
 dashboard/public/data.json
 dashboard/public/recommendations.json
 reddit_framework.md
+profiles/
+
+# Internal docs (not for public)
+ROADMAP.md
+AGENT_SKILLS_BRAINSTORM.md
 
 # Keep examples
 !persona.example.json

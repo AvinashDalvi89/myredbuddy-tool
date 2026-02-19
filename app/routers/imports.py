@@ -144,6 +144,134 @@ def import_by_username(req: ImportUsernameRequest):
     }
 
 
+@router.post("/refresh")
+def refresh_data():
+    """
+    Refresh data for the active profile.
+    Fetches latest posts/comments from Reddit, updates stats,
+    and auto-detects removed content.
+    """
+    from app.services.storage import get_active_profile
+
+    active_profile = get_active_profile()
+
+    if not active_profile:
+        raise HTTPException(
+            status_code=400,
+            detail="No active profile. Import data first using /api/import/username"
+        )
+
+    # Load existing data before refresh
+    extracted_path = get_profile_data_path(active_profile, "extracted_data.json")
+    existing = load_json_file(extracted_path, default={"posts": [], "comments": []})
+    existing_post_ids = {p.get("id") for p in existing.get("posts", []) if p.get("id")}
+    existing_comment_ids = {c.get("id") for c in existing.get("comments", []) if c.get("id")}
+
+    # Fetch current data from Reddit
+    fetched_post_ids = set()
+    fetched_comment_ids = set()
+    removals_detected = []
+
+    try:
+        posts_data = fetch_user_posts(active_profile, limit=100, sort="new")
+        for p in posts_data:
+            fetched_post_ids.add(p.get("id"))
+            # Check for [removed] or [deleted] content
+            if p.get("selftext") in ["[removed]", "[deleted]"]:
+                removals_detected.append({
+                    "id": p.get("id"),
+                    "type": "post",
+                    "subreddit": p.get("subreddit", ""),
+                    "title": p.get("title", ""),
+                    "reason": "content_removed"
+                })
+    except Exception:
+        pass
+
+    time.sleep(0.5)
+
+    try:
+        comments_data = fetch_user_comments(active_profile, limit=100, sort="new")
+        for c in comments_data:
+            fetched_comment_ids.add(c.get("id"))
+            # Check for [removed] or [deleted] content
+            if c.get("body") in ["[removed]", "[deleted]"]:
+                removals_detected.append({
+                    "id": c.get("id"),
+                    "type": "comment",
+                    "subreddit": c.get("subreddit", ""),
+                    "content": c.get("link_title", ""),
+                    "reason": "content_removed"
+                })
+    except Exception:
+        pass
+
+    # Detect items that disappeared from profile (might be removed/deleted)
+    # Only flag if we fetched enough items (Reddit limits to 100)
+    missing_posts = existing_post_ids - fetched_post_ids
+    missing_comments = existing_comment_ids - fetched_comment_ids
+
+    # Look up details for missing items from saved data
+    for p in existing.get("posts", []):
+        if p.get("id") in missing_posts:
+            removals_detected.append({
+                "id": p.get("id"),
+                "type": "post",
+                "subreddit": p.get("subreddit", ""),
+                "title": p.get("title", ""),
+                "content": p.get("content", "")[:200],
+                "reason": "not_in_profile"
+            })
+
+    for c in existing.get("comments", []):
+        if c.get("id") in missing_comments:
+            removals_detected.append({
+                "id": c.get("id"),
+                "type": "comment",
+                "subreddit": c.get("subreddit", ""),
+                "content": c.get("content", "")[:200],
+                "reason": "not_in_profile"
+            })
+
+    # Log removals to removal history
+    if removals_detected:
+        from app.services.analysis import classify_tone, classify_topics
+        removal_history_path = get_profile_data_path(active_profile, "removal_history.json")
+        history = load_json_file(removal_history_path, default={"removals": [], "patterns": {}})
+
+        existing_removal_ids = {r.get("id") for r in history.get("removals", []) if r.get("id")}
+
+        for removal in removals_detected:
+            if removal.get("id") not in existing_removal_ids:
+                content = removal.get("content", removal.get("title", ""))
+                history["removals"].append({
+                    "id": removal.get("id"),
+                    "subreddit": removal.get("subreddit", "").lower(),
+                    "content_preview": content[:200],
+                    "content_type": removal.get("type"),
+                    "reason": removal.get("reason"),
+                    "removal_type": "auto_detected",
+                    "tones": classify_tone(content),
+                    "topics": classify_topics(content),
+                    "logged_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                })
+
+        history["last_updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        save_json_file(removal_history_path, history)
+
+    # Now do the regular import/merge
+    from app.models import ImportUsernameRequest
+    req = ImportUsernameRequest(username=active_profile)
+    result = import_by_username(req)
+
+    # Add removal detection info to result
+    result["removals_detected"] = len(removals_detected)
+    if removals_detected:
+        result["removal_message"] = f"Auto-detected {len(removals_detected)} removed/missing items"
+
+    return result
+
+
 @router.post("/import/paste")
 def import_by_paste(req: ImportPasteRequest):
     """

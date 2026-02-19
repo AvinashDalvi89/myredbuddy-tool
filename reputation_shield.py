@@ -78,17 +78,32 @@ TECHNICAL_EVIDENCE_MARKERS = {
     "tradeoffs": [
         r"\b(tradeoff|trade-off)\b", r"\b(but|however|although|downside)\b",
         r"\b(pros? (and|&) cons?)\b", r"\b(the catch is)\b",
-        r"\b(cost is|costs? more|cheaper but)\b"
+        r"\b(cost is|costs? more|cheaper but)\b",
+        r"\b(curious (how|if|whether|about))\b",  # Shows critical thinking
+        r"\b(wonder(ing)?s? (how|if|whether))\b",
     ],
     "specifics": [
-        r"\b(we use|we used|i use|i used)\b", r"\b(at (my|our) (company|team))\b",
+        r"\b(we use|we used|i use|i used)\b",
+        r"\b(at (my|our) (\w+ )?(company|team|job|work|org))\b",  # Allow words between
+        r"\b((my|our) (previous|current|last|former) (company|team|job|employer))\b",
         r"\b(in production)\b", r"\b(after \d+ (months?|years?))\b",
-        r"\b(version \d+)\b", r"\b(since 20\d\d)\b"
+        r"\b(version \d+)\b", r"\b(since 20\d\d)\b",
+        r"\b(i('ve| have) (had to|been|worked))\b",  # Personal experience
+        r"\b(we('d| had| would) often)\b",  # Team experience
+        r"\b(in my experience)\b",
+        r"\b(working on|worked on)\b",
     ],
     "patterns": [
-        r"\b(pattern|architecture|design)\b", r"\b(microservice|monolith)\b",
-        r"\b(caching|queue|pub[/-]?sub)\b", r"\b(rest|graphql|grpc)\b",
-        r"\b(postgres|mysql|redis|mongo)\b"
+        r"\b(pattern|architecture|design|pipeline|workflow|orchestration)\b",
+        r"\b(microservice|monolith|distributed|async|parallel)\b",
+        r"\b(caching|queue|pub[/-]?sub|messaging)\b",
+        r"\b(rest|graphql|grpc|api)\b",
+        r"\b(postgres|mysql|redis|mongo|dynamodb)\b",
+        r"\b(aws|sqs|sns|lambda|step.?functions?|ecs|eks|s3)\b",  # AWS services
+        r"\b(gcp|azure|kubernetes|k8s|docker)\b",  # Cloud/infra
+        r"\b(ci[/-]?cd|terraform|ansible|jenkins)\b",  # DevOps
+        r"\b(react|angular|vue|node|python|java|go|rust)\b",  # Languages/frameworks
+        r"\b(error.?propagation|fault.?tolerance|retry|backoff)\b",  # Reliability patterns
     ]
 }
 

@@ -1,5 +1,5 @@
 """
-Insights Endpoints - Removal Tracking and Analysis
+Removal Insights Endpoints - Removal Tracking and Analysis
 """
 
 import time
@@ -16,7 +16,7 @@ from app.services.storage import (
 )
 from app.services.analysis import classify_tone, classify_topics
 
-router = APIRouter(prefix="/api/insights", tags=["Insights"])
+router = APIRouter(prefix="/api/insights", tags=["Removal Insights"])
 
 
 def get_removal_history_path():
@@ -104,7 +104,7 @@ def log_removal(req: RemovalLogRequest):
 @router.get("/stats")
 def get_insights_stats():
     """
-    Get removal statistics and patterns.
+    Get removal statistics and patterns with actionable hints.
     """
     history = get_removal_history()
     removals = history.get("removals", [])
@@ -129,17 +129,104 @@ def get_insights_stats():
     high_risk_tones = sorted(tone_counts.items(), key=lambda x: x[1], reverse=True)[:5]
     high_risk_topics = sorted(topic_counts.items(), key=lambda x: x[1], reverse=True)[:5]
 
+    # Categorize and analyze reasons
+    mod_removals = []
+    low_engagement = []
+    other_removals = []
+
+    for r in removals:
+        reason = r.get("reason", "").lower()
+        removal_type = r.get("removal_type", "")
+
+        if removal_type == "mod" or "removed" in reason or "violation" in reason or "rule" in reason:
+            mod_removals.append(r)
+        elif "low engagement" in reason or removal_type == "low_performer":
+            low_engagement.append(r)
+        else:
+            other_removals.append(r)
+
+    # Generate actionable hints based on data
+    hints = []
+
+    # Hint: Low engagement pattern
+    if len(low_engagement) > len(removals) * 0.5:
+        low_eng_subs = {}
+        for r in low_engagement:
+            sub = r.get("subreddit", "unknown")
+            low_eng_subs[sub] = low_eng_subs.get(sub, 0) + 1
+        top_low_sub = max(low_eng_subs.items(), key=lambda x: x[1]) if low_eng_subs else None
+        hints.append({
+            "type": "engagement",
+            "title": "Low Engagement Pattern",
+            "description": f"{len(low_engagement)} of {len(removals)} removals are due to low engagement",
+            "action": f"Focus on adding more value. Top affected: r/{top_low_sub[0]}" if top_low_sub else "Add more unique insights to your comments"
+        })
+
+    # Hint: Subreddit-specific issues
+    if high_risk_subreddits and high_risk_subreddits[0][1] >= 3:
+        top_sub = high_risk_subreddits[0]
+        sub_removals = [r for r in removals if r.get("subreddit", "").lower() == top_sub[0].lower()]
+        sub_reasons = [r.get("reason", "") for r in sub_removals if r.get("reason") and "low engagement" not in r.get("reason", "").lower()]
+        hints.append({
+            "type": "subreddit",
+            "title": f"r/{top_sub[0]} Issues ({top_sub[1]} removals)",
+            "description": sub_reasons[0][:100] if sub_reasons else "Multiple removals in this subreddit",
+            "action": "Review this subreddit's rules before posting"
+        })
+
+    # Hint: Tone issues
+    if high_risk_tones:
+        top_tone = high_risk_tones[0]
+        tone_hints = {
+            "data_driven": "Data-heavy comments may lack personal connection",
+            "personal_experience": "Personal stories may be off-topic in technical subs",
+            "advisory": "Unsolicited advice can feel preachy",
+            "positive_enthusiastic": "Over-enthusiasm can seem promotional",
+            "neutral": "Neutral tone may lack engagement value",
+            "pain_point": "Complaints without solutions get downvoted",
+            "comparison": "Comparisons can start arguments"
+        }
+        if top_tone[0] in tone_hints:
+            hints.append({
+                "type": "tone",
+                "title": f"Tone Pattern: {top_tone[0].replace('_', ' ').title()}",
+                "description": tone_hints.get(top_tone[0], f"{top_tone[1]} removals with this tone"),
+                "action": "Try varying your comment style"
+            })
+
+    # Hint: Content type
+    by_type = patterns.get("by_type", {})
+    if by_type.get("comment", 0) > by_type.get("post", 0) * 10:
+        hints.append({
+            "type": "content",
+            "title": "Comment-Heavy Removals",
+            "description": f"{by_type.get('comment', 0)} comments vs {by_type.get('post', 0)} posts removed",
+            "action": "Focus on quality over quantity in comments"
+        })
+
+    # Filter common_reasons to exclude low engagement
+    filtered_reasons = {}
+    for reason, count in patterns.get("common_reasons", {}).items():
+        if "low engagement" not in reason.lower():
+            filtered_reasons[reason] = count
+
     return {
         "total_removals": len(removals),
         "last_updated": history.get("last_updated"),
         "high_risk_subreddits": [s[0] for s in high_risk_subreddits],
         "high_risk_topics": [t[0] for t in high_risk_topics],
         "high_risk_tones": [t[0] for t in high_risk_tones],
-        "common_reasons": patterns.get("by_reason", {}),
+        "common_reasons": filtered_reasons if filtered_reasons else patterns.get("common_reasons", {}),
         "by_subreddit": patterns.get("by_subreddit", {}),
         "by_type": patterns.get("by_type", {"post": 0, "comment": 0}),
         "by_removal_type": patterns.get("by_removal_type", {}),
-        "recent_removals": removals[-10:][::-1],  # Last 10, newest first
+        "recent_removals": removals[-10:][::-1],
+        "hints": hints,
+        "breakdown": {
+            "mod_removals": len(mod_removals),
+            "low_engagement": len(low_engagement),
+            "other": len(other_removals)
+        }
     }
 
 
@@ -314,4 +401,65 @@ def get_deep_analysis():
         "by_subreddit": by_subreddit,
         "problem_subreddits": problem_subreddits,
         "insights": insights,
+    }
+
+
+@router.post("/migrate")
+def migrate_legacy_data():
+    """
+    Migrate removal history from base directory to active profile.
+    Use this if you had removal data before profiles were added.
+    """
+    import os
+
+    active = get_active_profile()
+    if not active:
+        raise HTTPException(status_code=400, detail="No active profile set")
+
+    base_path = os.path.join(settings.BASE_DIR, "removal_history.json")
+    if not os.path.exists(base_path):
+        return {
+            "success": False,
+            "message": "No legacy removal_history.json found in base directory",
+        }
+
+    legacy = load_json_file(base_path, default={})
+    if not legacy.get("removals"):
+        return {
+            "success": False,
+            "message": "Legacy file exists but has no removal data",
+        }
+
+    # Get current profile data
+    profile_path = get_profile_data_path(active, "removal_history.json")
+    current = load_json_file(profile_path, default={"removals": [], "patterns": {}})
+
+    # Merge: add legacy removals that aren't already in profile
+    existing_ids = {r.get("id") for r in current.get("removals", []) if r.get("id")}
+    added = 0
+
+    for removal in legacy.get("removals", []):
+        removal_id = removal.get("id")
+        if not removal_id or removal_id not in existing_ids:
+            current["removals"].append(removal)
+            added += 1
+
+    # Merge patterns
+    for key, value in legacy.get("patterns", {}).items():
+        if key not in current.get("patterns", {}):
+            current["patterns"][key] = value
+        elif isinstance(value, dict):
+            for k, v in value.items():
+                current["patterns"][key][k] = current["patterns"][key].get(k, 0) + v
+
+    current["last_updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    save_json_file(profile_path, current)
+
+    return {
+        "success": True,
+        "migrated": added,
+        "total_removals": len(current["removals"]),
+        "message": f"Migrated {added} removals from legacy file to profile '{active}'",
+        "legacy_path": base_path,
+        "profile_path": profile_path,
     }

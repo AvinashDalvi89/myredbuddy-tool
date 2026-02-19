@@ -47,7 +47,7 @@ import {
   HiOutlineClipboardCheck
 } from "react-icons/hi";
 
-type TabType = "setup" | "dashboard" | "recommendations" | "competitors" | "suggestions" | "shield" | "insights" | "help";
+type TabType = "setup" | "dashboard" | "recommendations" | "competitors" | "validator" | "shield" | "insights" | "help";
 type DashboardSubTab = "overview" | "performance" | "analytics";
 
 // Set to true to enable personal features (comment suggestions)
@@ -59,9 +59,9 @@ const TAB_LABELS: Record<TabType, string> = {
   dashboard: "Dashboard",
   recommendations: "Recommendations",
   competitors: "Competitor Analysis",
-  suggestions: "Comment Suggestions",
+  validator: "Pre-Post Checker",
   shield: "Reputation Shield",
-  insights: "Insights",
+  insights: "Removal Insights",
   setup: "Setup",
   help: "Help & Guide"
 };
@@ -215,9 +215,9 @@ const NAV_ITEMS: { key: TabType; label: string; icon: React.ReactNode; personal?
   { key: "dashboard", label: "Dashboard", icon: <FiBarChart2 className="w-4 h-4" /> },
   { key: "recommendations", label: "Recommendations", icon: <HiOutlineLightBulb className="w-4 h-4" /> },
   { key: "competitors", label: "Competitor Analysis", icon: <FiSearch className="w-4 h-4" /> },
-  { key: "suggestions", label: "Suggestions", icon: <FiMessageSquare className="w-4 h-4" />, personal: true },
+  { key: "validator", label: "Pre-Post Checker", icon: <FiMessageSquare className="w-4 h-4" /> },
   { key: "shield", label: "Reputation Shield", icon: <FiShield className="w-4 h-4" /> },
-  { key: "insights", label: "Insights", icon: <FiTrendingUp className="w-4 h-4" /> },
+  { key: "insights", label: "Removal Insights", icon: <FiTrendingUp className="w-4 h-4" /> },
   { key: "setup", label: "Setup", icon: <FiSettings className="w-4 h-4" /> },
   { key: "help", label: "Help & Guide", icon: <FiHelpCircle className="w-4 h-4" /> },
 ];
@@ -411,7 +411,7 @@ function Pagination({
 }
 
 // Valid tabs for URL routing
-const VALID_TABS: TabType[] = ["dashboard", "setup", "recommendations", "competitors", "suggestions", "shield", "insights", "help"];
+const VALID_TABS: TabType[] = ["dashboard", "setup", "recommendations", "competitors", "validator", "shield", "insights", "help"];
 
 function getTabFromHash(): TabType {
   if (typeof window === "undefined") return "dashboard";
@@ -430,9 +430,12 @@ function getTabFromHash(): TabType {
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [recs, setRecs] = useState<Recommendations | null>(null);
+  const [recsLoading, setRecsLoading] = useState(false);
+  const [recsFocusSub, setRecsFocusSub] = useState("");
   const [tab, setTab] = useState<TabType>("dashboard");
   const [dashboardSubTab, setDashboardSubTab] = useState<DashboardSubTab>("overview");
   const [isClient, setIsClient] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [filter, setFilter] = useState<{
     type: string;
     value: string;
@@ -446,6 +449,7 @@ export default function Dashboard() {
   const [competitorLoading, setCompetitorLoading] = useState(false);
   const [validationLoading, setValidationLoading] = useState(false);
   const [validationAnalysis, setValidationAnalysis] = useState("");
+  const [validationShield, setValidationShield] = useState<{status: string; can_post: boolean; overall_score: number; summary: string; issues: {type: string; description: string; severity: string}[]; warnings: {type: string; description: string; severity: string}[]; suggestions: string[]} | null>(null);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestResult, setSuggestResult] = useState("");
   const [competitorAnalysis, setCompetitorAnalysis] = useState("");
@@ -542,7 +546,8 @@ export default function Dashboard() {
     fetch("/data.json")
       .then((r) => r.json())
       .then(setData)
-      .catch(() => setData(null));
+      .catch(() => setData(null))
+      .finally(() => setIsInitialLoading(false));
     fetch("/recommendations.json")
       .then((r) => r.json())
       .then(setRecs)
@@ -644,6 +649,40 @@ export default function Dashboard() {
     URL.revokeObjectURL(url);
   };
 
+  // Refresh data for active profile (fetch latest from Reddit)
+  const [refreshLoading, setRefreshLoading] = useState(false);
+  const refreshProfileData = async () => {
+    setRefreshLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const result = await res.json();
+      if (res.ok) {
+        // Refresh dashboard data
+        fetch("/data.json").then((r) => r.json()).then(setData).catch(() => {});
+        fetch(`${API_BASE}/api/status`).then((r) => r.json()).then(setApiStatus).catch(() => {});
+        // Refresh insights stats if removals were detected
+        if (result.removals_detected) {
+          fetch(`${API_BASE}/api/insights/stats`).then((r) => r.json()).then(setInsightsStats).catch(() => {});
+        }
+        await refreshProfiles();
+        let message = `Refreshed: ${result.new_posts} new posts, ${result.new_comments} new comments, ${result.updated_posts} updated, ${result.updated_comments} updated`;
+        if (result.removals_detected > 0) {
+          message += `\n\n⚠️ ${result.removals_detected} removed/deleted items detected and logged to Insights.`;
+        }
+        alert(message);
+      } else {
+        alert(result.detail || "Failed to refresh data");
+      }
+    } catch {
+      alert("Could not connect to API. Make sure api.py is running.");
+    } finally {
+      setRefreshLoading(false);
+    }
+  };
+
   // Import data by username
   const importData = async () => {
     if (!importUsername.trim()) return;
@@ -671,7 +710,41 @@ export default function Dashboard() {
     setImportLoading(false);
   };
 
-  // Show setup tab if no data, otherwise show loading for other tabs
+  // Refresh recommendations with optional subreddit focus
+  const refreshRecommendations = async (focusSub?: string) => {
+    setRecsLoading(true);
+    try {
+      const url = focusSub
+        ? `${API_BASE}/api/recommendations/refresh?subreddit=${encodeURIComponent(focusSub)}`
+        : `${API_BASE}/api/recommendations/refresh`;
+      const res = await fetch(url, { method: "POST" });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        setRecs(result.recommendations);
+        alert(result.message);
+      } else {
+        alert(result.message || result.detail || "Failed to refresh recommendations");
+      }
+    } catch {
+      alert("Could not connect to API. Make sure api.py is running.");
+    } finally {
+      setRecsLoading(false);
+    }
+  };
+
+  // Show loading spinner during initial data fetch
+  if (isInitialLoading) {
+    return (
+      <div className="flex min-h-screen bg-gray-950 items-center justify-center">
+        <div className="text-center">
+          <img src="/myredditbuddy-logo.png" alt="MyRedBuddy" className="h-12 w-auto mx-auto mb-4" />
+          <FiRefreshCw className="w-6 h-6 text-orange-500 animate-spin mx-auto" />
+        </div>
+      </div>
+    );
+  }
+
+  // Show setup prompt if no data after loading
   if (!data && tab !== "setup") {
     return (
       <div className="flex min-h-screen">
@@ -762,6 +835,10 @@ export default function Dashboard() {
   // Validate draft using Claude via Python API
   const validateDraft = async () => {
     if (!draftText.trim()) return;
+    setSuggestResult("");
+    setParsedSuggestions([]);
+    setActiveRefineId(null);
+    setValidationShield(null);
     setValidationLoading(true);
     setValidationAnalysis("");
     try {
@@ -772,6 +849,7 @@ export default function Dashboard() {
       });
       const data = await res.json();
       setValidationAnalysis(data.analysis);
+      if (data.shield) setValidationShield(data.shield);
     } catch (e) {
       setValidationAnalysis("Error: Could not connect to API. Make sure api.py is running on port 8000.");
     }
@@ -803,6 +881,9 @@ export default function Dashboard() {
   // Suggest comments using Claude via Python API
   const suggestComments = async () => {
     if (!originalPost.trim() || !draftSub.trim()) return;
+    setValidationAnalysis("");
+    setValidationResult(null);
+    setValidationShield(null);
     setSuggestLoading(true);
     setSuggestResult("");
     setParsedSuggestions([]);
@@ -1230,6 +1311,27 @@ export default function Dashboard() {
                           Switch
                         </button>
                       )}
+                      {profile.is_active && (
+                        <button
+                          onClick={refreshProfileData}
+                          disabled={refreshLoading}
+                          className="px-3 py-1 text-xs bg-green-500/20 text-green-400 rounded hover:bg-green-500/30 flex items-center gap-1"
+                          title="Refresh data from Reddit"
+                        >
+                          <FiRefreshCw className={`w-3.5 h-3.5 ${refreshLoading ? "animate-spin" : ""}`} />
+                          {refreshLoading ? "Refreshing..." : "Refresh"}
+                        </button>
+                      )}
+                      <a
+                        href={`https://www.reveddit.com/y/${profile.username}/?all=true`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1 text-xs bg-purple-500/20 text-purple-400 rounded hover:bg-purple-500/30 flex items-center gap-1"
+                        title="View removed content on Reveddit"
+                      >
+                        <FiExternalLink className="w-3.5 h-3.5" />
+                        Reveddit
+                      </a>
                       <button
                         onClick={() => exportProfile(profile.username)}
                         className="px-3 py-1 text-xs bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500/30"
@@ -1547,7 +1649,7 @@ export default function Dashboard() {
                   <li><strong className="text-gray-300">Recommendations:</strong> AI-powered post ideas</li>
                   <li><strong className="text-gray-300">Competitor Analysis:</strong> Research any subreddit</li>
                   <li><strong className="text-gray-300">Shield:</strong> Pre-flight check before posting</li>
-                  <li><strong className="text-gray-300">Insights:</strong> Track & learn from removals</li>
+                  <li><strong className="text-gray-300">Removal Insights:</strong> Track & learn from removals</li>
                 </ul>
               </div>
 
@@ -1582,7 +1684,7 @@ export default function Dashboard() {
       )}
 
       {/* Recommendations Tab */}
-      {tab === "recommendations" && recs && (
+      {tab === "recommendations" && (
         <div className="space-y-6">
           <Breadcrumb items={[{ label: "Recommendations" }]} />
 
@@ -1591,7 +1693,47 @@ export default function Dashboard() {
               <h1 className="text-2xl font-bold text-gray-100">AI Recommendations</h1>
               <p className="text-gray-500 text-sm mt-1">Personalized suggestions based on your Reddit performance data</p>
             </div>
+            <div className="flex items-center gap-2">
+              <div className="flex">
+                <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-gray-700 bg-gray-800 text-gray-500 text-sm">r/</span>
+                <input
+                  type="text"
+                  value={recsFocusSub}
+                  onChange={(e) => setRecsFocusSub(e.target.value)}
+                  placeholder="subreddit (optional)"
+                  className="w-40 px-3 py-2 bg-gray-800 border border-gray-700 rounded-r-lg text-gray-200 placeholder-gray-500 text-sm focus:outline-none focus:border-orange-500"
+                />
+              </div>
+              <button
+                onClick={() => refreshRecommendations(recsFocusSub || undefined)}
+                disabled={recsLoading}
+                className="px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                {recsLoading ? (
+                  <FiRefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <FiRefreshCw className="w-4 h-4" />
+                )}
+                {recsLoading ? "Generating..." : "Refresh"}
+              </button>
+            </div>
           </div>
+
+          {!recs ? (
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8 text-center">
+              <HiOutlineLightBulb className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-300 mb-2">No Recommendations Yet</h3>
+              <p className="text-gray-500 mb-4">Click Refresh to generate AI-powered recommendations based on your Reddit data.</p>
+              <button
+                onClick={() => refreshRecommendations()}
+                disabled={recsLoading}
+                className="px-6 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors disabled:opacity-50"
+              >
+                {recsLoading ? "Generating..." : "Generate Recommendations"}
+              </button>
+            </div>
+          ) : (
+            <>
 
           {/* Post Ideas */}
           <div>
@@ -1748,6 +1890,7 @@ export default function Dashboard() {
           </div>
 
           {/* Pattern Insight */}
+          {recs.patterns_summary && (
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
             <h2 className="text-lg font-semibold text-amber-400 mb-3">
               Key Insight from Data
@@ -1756,6 +1899,7 @@ export default function Dashboard() {
               {recs.patterns_summary.insight}
             </p>
             <div className="grid grid-cols-2 gap-4 mt-4">
+              {recs.patterns_summary.high_performing_comment_profile && (
               <div className="bg-emerald-950/20 border border-emerald-900/30 rounded-lg p-3">
                 <div className="text-xs text-emerald-400 font-medium mb-1">
                   High performers (3+ ups)
@@ -1771,6 +1915,8 @@ export default function Dashboard() {
                   </p>
                 </div>
               </div>
+              )}
+              {recs.patterns_summary.low_performing_comment_profile && (
               <div className="bg-red-950/20 border border-red-900/30 rounded-lg p-3">
                 <div className="text-xs text-red-400 font-medium mb-1">
                   Low performers (0-1 ups)
@@ -1786,8 +1932,12 @@ export default function Dashboard() {
                   </p>
                 </div>
               </div>
+              )}
             </div>
           </div>
+          )}
+          </>
+          )}
         </div>
       )}
 
@@ -1855,7 +2005,7 @@ export default function Dashboard() {
                 icon={<FiLayers className="w-5 h-5" />}
                 color="orange"
                 actions={[
-                  { label: "Refresh", icon: <FiRefreshCw className="w-3 h-3" />, onClick: () => fetchData() },
+                  { label: "Refresh", icon: <FiRefreshCw className="w-3 h-3" />, onClick: () => fetch("/data.json").then((r) => r.json()).then(setData).catch(() => {}) },
                   { label: "View All", icon: <FiChevronRight className="w-3 h-3" />, onClick: () => setDashboardSubTab("performance") }
                 ]}
               />
@@ -1868,7 +2018,7 @@ export default function Dashboard() {
                 color="emerald"
                 actions={[
                   { label: "See Patterns", icon: <FiZap className="w-3 h-3" />, onClick: () => setDashboardSubTab("performance") },
-                  { label: "Copy Style", icon: <FiEdit3 className="w-3 h-3" />, onClick: () => setTab("suggestions") }
+                  { label: "Copy Style", icon: <FiEdit3 className="w-3 h-3" />, onClick: () => setTab("validator") }
                 ]}
               />
               <MetricCard
@@ -1878,7 +2028,7 @@ export default function Dashboard() {
                 icon={<FiMessageSquare className="w-5 h-5" />}
                 color="blue"
                 actions={[
-                  { label: "Use This Tone", icon: <FiEdit3 className="w-3 h-3" />, onClick: () => setTab("suggestions") },
+                  { label: "Use This Tone", icon: <FiEdit3 className="w-3 h-3" />, onClick: () => setTab("validator") },
                   { label: "View Examples", icon: <FiSearch className="w-3 h-3" />, onClick: () => { setFilter({ type: "tone", value: sortedTones[0]?.[0] }); setDashboardSubTab("performance"); } }
                 ]}
               />
@@ -2200,8 +2350,8 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-          </>
-        )}
+            </>
+          )}
       </>}
 
       {/* Competitors Tab */}
@@ -2271,20 +2421,15 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Suggestions Tab (Personal Feature) */}
-      {tab === "suggestions" && (
+      {/* Pre-Post Checker Tab */}
+      {tab === "validator" && (
         <div className="space-y-6">
-          <Breadcrumb items={[{ label: "Comment Suggestions" }]} />
+          <Breadcrumb items={[{ label: "Pre-Post Checker" }]} />
 
-          {/* Header with mode indicator */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-100">Comment Suggestions</h1>
-              <p className="text-gray-500 text-sm mt-1">Get AI-powered comment suggestions based on your persona</p>
-            </div>
-            <div className={`px-4 py-2 rounded-full text-sm font-medium ${originalPost.trim() ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-orange-500/20 text-orange-400 border border-orange-500/30"}`}>
-              {originalPost.trim() ? "Comment Mode" : "Post Mode"}
-            </div>
+          {/* Header */}
+          <div>
+            <h1 className="text-2xl font-bold text-gray-100">Pre-Post Checker</h1>
+            <p className="text-gray-500 text-sm mt-1">Validate your draft and run a reputation shield check before posting</p>
           </div>
 
           {/* Input Form Card */}
@@ -2339,7 +2484,7 @@ export default function Dashboard() {
               <div className="flex gap-3">
                 <button
                   onClick={validateDraft}
-                  disabled={validationLoading || suggestLoading || !draftText.trim()}
+                  disabled={validationLoading || !draftText.trim()}
                   className={`px-6 py-2.5 text-white rounded-xl font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all ${originalPost.trim() ? "bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 shadow-lg shadow-blue-500/20" : "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 shadow-lg shadow-orange-500/20"}`}
                 >
                   {validationLoading ? (
@@ -2354,32 +2499,12 @@ export default function Dashboard() {
                     </span>
                   )}
                 </button>
-
-                {originalPost.trim() && (
-                  <button
-                    onClick={suggestComments}
-                    disabled={suggestLoading || validationLoading || !draftSub.trim()}
-                    className="px-6 py-2.5 text-white rounded-xl font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 shadow-lg shadow-purple-500/20"
-                  >
-                    {suggestLoading ? (
-                      <span className="flex items-center gap-2">
-                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                        Generating...
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                        Suggest Comments
-                      </span>
-                    )}
-                  </button>
-                )}
               </div>
             </div>
           </div>
 
           {/* Results Section */}
-          {(validationLoading || validationAnalysis || suggestLoading || suggestResult) && (
+          {(validationLoading || validationAnalysis) && (
             <div className="space-y-4">
               {/* Validation Results */}
               {(validationLoading || validationAnalysis) && (
@@ -2408,101 +2533,62 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Suggestion Results */}
-              {(suggestLoading || suggestResult) && (
-                <div className={`bg-gray-900/50 border rounded-xl overflow-hidden ${suggestLoading ? "border-gray-700" : "border-purple-500/30"}`}>
-                  <div className={`px-6 py-3 border-b ${suggestLoading ? "bg-gray-800/50 border-gray-700" : "bg-purple-500/10 border-purple-500/20"}`}>
-                    <h3 className={`font-semibold flex items-center gap-2 ${suggestLoading ? "text-gray-400" : "text-purple-400"}`}>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                      Comment Suggestions
-                      {parsedSuggestions.length > 0 && (
-                        <span className="text-xs font-normal text-gray-500">({parsedSuggestions.length} suggestions)</span>
-                      )}
+              {/* Shield Check Summary (shown after validation completes) */}
+              {!validationLoading && validationShield && (
+                <div className={`border rounded-xl overflow-hidden ${validationShield.can_post ? "bg-gray-900/50 border-emerald-700/40" : "bg-red-950/20 border-red-700/40"}`}>
+                  <div className={`px-6 py-3 border-b flex items-center justify-between ${validationShield.can_post ? "bg-emerald-900/20 border-emerald-700/30" : "bg-red-900/20 border-red-700/30"}`}>
+                    <h3 className={`font-semibold flex items-center gap-2 ${validationShield.can_post ? "text-emerald-400" : "text-red-400"}`}>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                      Reputation Shield
                     </h3>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-sm font-medium px-3 py-1 rounded-full ${validationShield.can_post ? "bg-emerald-500/20 text-emerald-300" : "bg-red-500/20 text-red-300"}`}>
+                        {validationShield.can_post ? "Safe to post" : "Issues found"}
+                      </span>
+                      <span className="text-sm text-gray-400">Score: <span className={`font-bold ${validationShield.overall_score >= 70 ? "text-emerald-400" : validationShield.overall_score >= 40 ? "text-yellow-400" : "text-red-400"}`}>{validationShield.overall_score}/100</span></span>
+                    </div>
                   </div>
-                  <div className="p-6">
-                    {suggestLoading ? (
-                      <div className="flex items-center justify-center py-8">
-                        <div className="text-center">
-                          <svg className="animate-spin h-8 w-8 text-purple-400 mx-auto mb-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                          <p className="text-gray-400">Generating suggestions...</p>
-                          <p className="text-gray-600 text-sm mt-1">Using your persona + r/{draftSub} patterns</p>
-                        </div>
-                      </div>
-                    ) : parsedSuggestions.length > 0 ? (
-                      <div className="space-y-4">
-                        {parsedSuggestions.map((suggestion) => (
-                          <div
-                            key={suggestion.id}
-                            className={`relative bg-gray-800/50 border rounded-xl p-4 transition-all ${
-                              activeRefineId === suggestion.id
-                                ? "border-amber-500/50 ring-1 ring-amber-500/20"
-                                : "border-gray-700 hover:border-gray-600"
-                            } ${suggestion.isRefining ? "opacity-60" : ""}`}
-                          >
-                            {/* Comment number badge */}
-                            <div className="absolute -top-2 -left-2 w-6 h-6 rounded-full bg-purple-500 text-white text-xs font-bold flex items-center justify-center">
-                              {suggestion.id}
-                            </div>
-
-                            {/* Refining indicator */}
-                            {suggestion.isRefining && (
-                              <div className="absolute inset-0 bg-gray-900/50 rounded-xl flex items-center justify-center">
-                                <div className="flex items-center gap-2 text-amber-400">
-                                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                                  <span className="text-sm">Refining...</span>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Comment text */}
-                            <p className="text-gray-200 whitespace-pre-wrap pr-24">{suggestion.text}</p>
-
-                            {/* Action buttons */}
-                            <div className="absolute top-3 right-3 flex gap-2">
-                              <button
-                                onClick={() => navigator.clipboard.writeText(suggestion.text)}
-                                className="p-1.5 text-gray-500 hover:text-gray-300 hover:bg-gray-700 rounded-lg transition-colors"
-                                title="Copy"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                              </button>
-                              <button
-                                onClick={() => selectSuggestionToRefine(suggestion.id, suggestion.text)}
-                                className={`p-1.5 rounded-lg transition-colors ${
-                                  activeRefineId === suggestion.id
-                                    ? "text-amber-400 bg-amber-500/20"
-                                    : "text-gray-500 hover:text-amber-400 hover:bg-amber-500/10"
-                                }`}
-                                title="Refine this comment"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                              </button>
-                            </div>
-
-                            {/* Selected indicator */}
-                            {activeRefineId === suggestion.id && (
-                              <div className="mt-3 pt-3 border-t border-amber-500/20 flex items-center gap-2 text-amber-400 text-xs">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
-                                Selected for refinement - scroll down to refine
-                              </div>
-                            )}
+                  <div className="px-6 py-4 space-y-3">
+                    <p className="text-sm text-gray-300">{validationShield.summary}</p>
+                    {validationShield.issues.length > 0 && (
+                      <div className="space-y-1">
+                        {validationShield.issues.map((issue, i) => (
+                          <div key={i} className="flex items-start gap-2 text-sm text-red-300">
+                            <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span>{issue.description}</span>
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      <div className="prose prose-invert prose-sm max-w-none prose-headings:text-purple-400 prose-headings:font-semibold prose-headings:mt-4 prose-headings:mb-2 prose-strong:text-emerald-400 prose-li:text-gray-300 prose-p:text-gray-300">
-                        <ReactMarkdown>{suggestResult}</ReactMarkdown>
+                    )}
+                    {validationShield.warnings.length > 0 && (
+                      <div className="space-y-1">
+                        {validationShield.warnings.map((w, i) => (
+                          <div key={i} className="flex items-start gap-2 text-sm text-yellow-300">
+                            <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                            <span>{w.description}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {validationShield.suggestions.length > 0 && (
+                      <div className="pt-1 border-t border-gray-800 space-y-1">
+                        {validationShield.suggestions.map((s, i) => (
+                          <div key={i} className="flex items-start gap-2 text-sm text-gray-400">
+                            <svg className="w-4 h-4 mt-0.5 shrink-0 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span>{s}</span>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
                 </div>
               )}
+
             </div>
           )}
 
           {/* Empty State */}
-          {!validationLoading && !validationAnalysis && !suggestLoading && !suggestResult && (
+          {!validationLoading && !validationAnalysis && (
             <div className="bg-gray-900/30 border border-dashed border-gray-700 rounded-xl p-12 text-center">
               <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -2514,188 +2600,6 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Refine Section */}
-          <div id="refine-section" className="mt-8 pt-8 border-t border-gray-800">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${activeRefineId ? "bg-amber-500/30" : "bg-amber-500/20"}`}>
-                  <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-200">
-                    Refine Comment
-                    {activeRefineId && (
-                      <span className="ml-2 text-sm font-normal text-amber-400">
-                        (Editing Suggestion #{activeRefineId})
-                      </span>
-                    )}
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    {activeRefineId
-                      ? "Refine and update the selected suggestion above"
-                      : "Paste a comment that needs improvement and get a refined version"}
-                  </p>
-                </div>
-              </div>
-              {activeRefineId && (
-                <button
-                  onClick={() => {
-                    setActiveRefineId(null);
-                    setRefineComment("");
-                    setRefineFeedback("");
-                  }}
-                  className="text-sm text-gray-500 hover:text-gray-300 flex items-center gap-1"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
-                  Cancel
-                </button>
-              )}
-            </div>
-
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Input side */}
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Comment to refine</label>
-                    <textarea
-                      value={refineComment}
-                      onChange={(e) => setRefineComment(e.target.value)}
-                      placeholder="Paste the comment that doesn't meet expectations..."
-                      className="w-full h-28 px-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl text-gray-200 resize-none focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 placeholder:text-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">What&apos;s wrong with it?</label>
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {[
-                        { value: "ai_sounding", label: "Sounds like AI", icon: "🤖" },
-                        { value: "wrong_persona", label: "Wrong persona", icon: "👤" },
-                        { value: "too_formal", label: "Too formal", icon: "🎩" },
-                        { value: "too_casual", label: "Too casual", icon: "😎" },
-                        { value: "too_long", label: "Too long", icon: "📏" },
-                        { value: "too_short", label: "Too short", icon: "📝" },
-                        { value: "custom", label: "Other", icon: "✏️" },
-                      ].map((opt) => (
-                        <button
-                          key={opt.value}
-                          onClick={() => setRefineFeedbackType(opt.value)}
-                          className={`px-3 py-1.5 text-sm rounded-lg border transition-all ${
-                            refineFeedbackType === opt.value
-                              ? "bg-amber-500/20 border-amber-500/50 text-amber-400"
-                              : "bg-gray-800/50 border-gray-700 text-gray-400 hover:border-gray-600"
-                          }`}
-                        >
-                          <span className="mr-1.5">{opt.icon}</span>
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                    <input
-                      type="text"
-                      value={refineFeedback}
-                      onChange={(e) => setRefineFeedback(e.target.value)}
-                      placeholder="Additional details (e.g., 'remove the opener', 'make it more specific')"
-                      className="w-full px-4 py-2.5 bg-gray-800/50 border border-gray-700 rounded-lg text-gray-200 focus:outline-none focus:border-amber-500 placeholder:text-gray-600"
-                    />
-                  </div>
-
-                  <button
-                    onClick={() => refineCommentFn(activeRefineId ?? undefined)}
-                    disabled={refineLoading || !refineComment.trim()}
-                    className={`w-full px-6 py-2.5 text-white rounded-xl font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg ${
-                      activeRefineId
-                        ? "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 shadow-emerald-500/20"
-                        : "bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 shadow-amber-500/20"
-                    }`}
-                  >
-                    {refineLoading ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                        Refining...
-                      </span>
-                    ) : activeRefineId ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
-                        Refine & Update Suggestion #{activeRefineId}
-                      </span>
-                    ) : (
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                        Refine Comment
-                      </span>
-                    )}
-                  </button>
-                </div>
-
-                {/* Output side */}
-                <div>
-                  {refineLoading && (
-                    <div className="h-full flex items-center justify-center">
-                      <div className="text-center">
-                        <svg className="animate-spin h-8 w-8 text-amber-400 mx-auto mb-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                        <p className="text-gray-400">Refining your comment...</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {refineResult && !refineLoading && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium text-emerald-400">Refined version</label>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(refineResult);
-                          }}
-                          className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                          Copy
-                        </button>
-                      </div>
-                      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4">
-                        <p className="text-gray-200 whitespace-pre-wrap">{refineResult}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            setRefineComment(refineResult);
-                            setRefineResult("");
-                          }}
-                          className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                          Refine again
-                        </button>
-                        <button
-                          onClick={() => {
-                            setDraftText(refineResult);
-                            setRefineResult("");
-                          }}
-                          className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                          Use for validation
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {!refineLoading && !refineResult && (
-                    <div className="h-full flex items-center justify-center border border-dashed border-gray-700 rounded-xl">
-                      <div className="text-center py-8 px-4">
-                        <div className="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-3">
-                          <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                        </div>
-                        <p className="text-gray-500 text-sm">Refined comment will appear here</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
@@ -2984,10 +2888,10 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ============ INSIGHTS TAB ============ */}
+      {/* ============ REMOVAL INSIGHTS TAB ============ */}
       {tab === "insights" && (
         <div className="space-y-6">
-          <Breadcrumb items={[{ label: "Insights" }]} />
+          <Breadcrumb items={[{ label: "Removal Insights" }]} />
 
           {/* Header */}
           <div className="bg-gradient-to-r from-indigo-900/30 to-purple-900/30 border border-indigo-500/20 rounded-xl p-6">
@@ -3348,6 +3252,75 @@ export default function Dashboard() {
             </div>
           )}
 
+          {/* How to Get Removal Data Guide */}
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-gray-300 mb-4 flex items-center gap-2">
+              <FiHelpCircle className="w-5 h-5 text-blue-400" />
+              How to Find Your Removed Content
+            </h3>
+            <div className="space-y-4">
+              <div className="bg-gray-800/30 rounded-lg p-4">
+                <h4 className="text-sm font-semibold text-purple-400 mb-2 flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-purple-500/20 flex items-center justify-center text-xs">1</span>
+                  Auto-Detection (Recommended)
+                </h4>
+                <p className="text-sm text-gray-400">
+                  Use the <strong className="text-green-400">Refresh</strong> button in Setup → Your Profiles.
+                  MyRedBuddy compares your saved data with Reddit and auto-detects removed content.
+                </p>
+              </div>
+
+              <div className="bg-gray-800/30 rounded-lg p-4">
+                <h4 className="text-sm font-semibold text-purple-400 mb-2 flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-purple-500/20 flex items-center justify-center text-xs">2</span>
+                  Reveddit
+                </h4>
+                <p className="text-sm text-gray-400 mb-2">
+                  Check your removed content history on Reveddit (uses archived data):
+                </p>
+                <a
+                  href={profiles?.active_profile ? `https://www.reveddit.com/y/${profiles.active_profile}/?all=true` : "https://www.reveddit.com/"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-500/20 text-purple-400 rounded hover:bg-purple-500/30 text-sm"
+                >
+                  <FiExternalLink className="w-4 h-4" />
+                  Open Reveddit {profiles?.active_profile && `for u/${profiles.active_profile}`}
+                </a>
+              </div>
+
+              <div className="bg-gray-800/30 rounded-lg p-4">
+                <h4 className="text-sm font-semibold text-purple-400 mb-2 flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-purple-500/20 flex items-center justify-center text-xs">3</span>
+                  Manual Logging
+                </h4>
+                <p className="text-sm text-gray-400">
+                  When you notice content was removed, copy it from Reveddit or your notifications
+                  and use the <strong className="text-amber-400">Log a Removal</strong> form above.
+                </p>
+              </div>
+
+              <div className="bg-gray-800/30 rounded-lg p-4">
+                <h4 className="text-sm font-semibold text-purple-400 mb-2 flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-purple-500/20 flex items-center justify-center text-xs">4</span>
+                  Browser Extension
+                </h4>
+                <p className="text-sm text-gray-400">
+                  Install the{" "}
+                  <a
+                    href="https://chromewebstore.google.com/detail/reveddit-real-time/ickfhlplfbipnfahjbeongebnmojbnhm"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:underline"
+                  >
+                    Reveddit Real-Time extension
+                  </a>
+                  {" "}to get notified immediately when your content is removed.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Integration Note */}
           <div className="bg-gradient-to-r from-indigo-900/20 to-purple-900/20 border border-indigo-500/20 rounded-xl p-4">
             <div className="flex items-start gap-3">
@@ -3453,7 +3426,7 @@ export default function Dashboard() {
                     <span className="text-emerald-400">Shield</span> - Check content before posting
                   </button>
                   <button onClick={() => setTab("insights")} className="text-left p-2 rounded bg-gray-900/50 hover:bg-gray-900 text-gray-400">
-                    <span className="text-red-400">Insights</span> - Track content removals
+                    <span className="text-red-400">Removal Insights</span> - Track content removals
                   </button>
                 </div>
               </div>
@@ -3592,11 +3565,11 @@ export default function Dashboard() {
                 </ul>
               </div>
 
-              {/* Insights */}
+              {/* Removal Insights */}
               <div className="bg-gray-800/30 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <FiTrendingUp className="w-4 h-4 text-red-400" />
-                  <h4 className="text-sm font-medium text-gray-200">Insights</h4>
+                  <h4 className="text-sm font-medium text-gray-200">Removal Insights</h4>
                 </div>
                 <p className="text-sm text-gray-400 mb-2">Track content removals and learn from them.</p>
                 <ul className="text-xs text-gray-500 space-y-1">

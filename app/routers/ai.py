@@ -5,6 +5,12 @@ AI-Powered Analysis and Suggestion Endpoints
 import time
 from fastapi import APIRouter, HTTPException
 
+try:
+    from reputation_shield import full_shield_check
+    SHIELD_AVAILABLE = True
+except ImportError:
+    SHIELD_AVAILABLE = False
+
 from app.models import AnalyzeRequest, ValidateRequest, SuggestRequest, RefineRequest
 from app.config import settings
 from app.services.claude import call_claude
@@ -136,7 +142,7 @@ TARGET SUBREDDIT: r/{req.subreddit}
 {rules_text}
 
 {f'FRAMEWORK: {framework[:1000]}' if framework else ''}
-{f'USER PERSONA: {persona}' if persona else ''}
+{f'WRITER BACKGROUND (for context, NEVER quote in revised version): {persona}' if persona else ''}
 {user_context}
 
 Provide analysis in this format:
@@ -146,15 +152,40 @@ Provide analysis in this format:
 4. SUGGESTIONS: Specific improvements (2-3 actionable items)
 5. REVISED VERSION: (optional) A better version if score < 7
 
+IMPORTANT for REVISED VERSION:
+- Use the persona naturally and organically - don't always start with credentials
+- Only mention experience/role when contextually relevant to the comment
+- Avoid formulaic patterns like "15 years in, currently Senior Staff Engineer working on X"
+- Write naturally as the persona would, not as a structured bio
+- Sometimes it's fine to just share insights without establishing credentials upfront
+- Make it sound conversational, not like a resume introduction
+
 Be direct and specific. Focus on Reddit engagement patterns."""
 
     analysis = call_claude(prompt)
+
+    # Run shield check inline so the frontend gets both in one request
+    shield = None
+    if SHIELD_AVAILABLE:
+        history_items = []
+        if active_profile:
+            extracted_path = get_profile_data_path(active_profile, "extracted_data.json")
+            data = load_json_file(extracted_path)
+            if data:
+                history_items = data.get("posts", []) + data.get("comments", [])
+        shield = full_shield_check(
+            text=req.draft,
+            subreddit=req.subreddit or "general",
+            content_type=content_type,
+            history=history_items,
+        )
 
     return {
         "draft": req.draft,
         "subreddit": req.subreddit,
         "content_type": content_type,
         "analysis": analysis,
+        "shield": shield,
     }
 
 
@@ -189,7 +220,7 @@ POST TO COMMENT ON:
 TARGET SUBREDDIT: r/{req.subreddit}
 {rules_text}
 
-{f'USER PERSONA: {persona}' if persona else ''}
+{f'WRITER BACKGROUND (for context only, NEVER quote directly): {persona}' if persona else ''}
 {examples}
 
 Generate 3 different comment approaches:
@@ -206,7 +237,10 @@ Requirements:
 - Sound natural, not AI-generated
 - Match the persona's expertise and voice
 - Be specific and add value
-- Appropriate length for Reddit (2-4 sentences typically)"""
+- Appropriate length for Reddit (2-4 sentences typically)
+- Use persona naturally - don't always start with credentials like "15 years in, currently X role"
+- Only mention experience/role when contextually relevant
+- Write conversationally, not like a structured bio introduction"""
 
     result = call_claude(prompt)
 
@@ -244,10 +278,13 @@ ORIGINAL COMMENT:
 FEEDBACK: {feedback_detail}
 {f'ADDITIONAL NOTES: {req.feedback}' if req.feedback and req.feedback_type != 'custom' else ''}
 
-{f'USER PERSONA: {persona}' if persona else ''}
+{f'WRITER BACKGROUND (for voice/style only, NEVER mention credentials): {persona}' if persona else ''}
 {rules_text}
 
-Provide the refined comment only, no explanation. Make it sound natural and human."""
+Provide the refined comment only, no explanation. Make it sound natural and human.
+NEVER start with or include job titles, years of experience, or formal credentials.
+- Use persona naturally - avoid formulaic credential introductions unless contextually relevant
+- Write conversationally, not like a structured bio"""
 
     result = call_claude(prompt)
 
@@ -326,3 +363,154 @@ def merge_removed_data():
         "total_comments": len(merged_comments),
         "message": f"Merged {added} removed items into dashboard data",
     }
+
+
+@router.post("/recommendations/refresh")
+def refresh_recommendations(subreddit: str = None):
+    """
+    Regenerate AI recommendations based on your performance data.
+    Optionally focus on a specific subreddit for targeted recommendations.
+    """
+    import os
+    import json
+
+    active_profile = get_active_profile()
+    if not active_profile:
+        raise HTTPException(status_code=400, detail="No active profile")
+
+    # Load user's data
+    extracted_path = get_profile_data_path(active_profile, "extracted_data.json")
+    data = load_json_file(extracted_path)
+    if not data:
+        raise HTTPException(status_code=400, detail="No data found. Import your Reddit data first.")
+
+    posts = data.get("posts", [])
+    comments = data.get("comments", [])
+    all_items = posts + comments
+
+    if not all_items:
+        raise HTTPException(status_code=400, detail="No posts or comments found in your data")
+
+    # Analyze performance
+    stats = analyze_items(all_items)
+
+    # Get top performing content
+    top_items = sorted(all_items, key=lambda x: x.get("ups", 0), reverse=True)[:10]
+    low_items = sorted(all_items, key=lambda x: x.get("ups", 0))[:5]
+
+    # Get subreddit performance
+    sub_perf = {}
+    for item in all_items:
+        sub = item.get("subreddit", "unknown")
+        if sub not in sub_perf:
+            sub_perf[sub] = {"count": 0, "total_ups": 0, "items": []}
+        sub_perf[sub]["count"] += 1
+        sub_perf[sub]["total_ups"] += item.get("ups", 0)
+        sub_perf[sub]["items"].append(item)
+
+    for sub in sub_perf:
+        sub_perf[sub]["avg"] = sub_perf[sub]["total_ups"] / sub_perf[sub]["count"] if sub_perf[sub]["count"] > 0 else 0
+
+    top_subs = sorted(sub_perf.items(), key=lambda x: x[1]["avg"], reverse=True)[:5]
+
+    # If specific subreddit requested, fetch fresh data from it
+    subreddit_context = ""
+    if subreddit:
+        try:
+            fresh_posts = fetch_subreddit_posts(subreddit.strip(), limit=25, sort="top")
+            if fresh_posts:
+                subreddit_context = f"\n\nFRESH DATA FROM r/{subreddit} (top posts):\n"
+                for p in fresh_posts[:10]:
+                    subreddit_context += f"- ({p.get('ups', 0)} ups) {p.get('title', '')[:80]}\n"
+        except Exception:
+            pass
+
+    # Build prompt for AI
+    prompt = f"""Based on this Reddit user's performance data, generate personalized recommendations.
+
+USER'S TOP PERFORMING CONTENT (what works):
+{json.dumps([{"ups": i.get("ups"), "subreddit": i.get("subreddit"), "content": i.get("content", i.get("title", ""))[:150], "tones": i.get("tones", []), "topics": i.get("topics", [])} for i in top_items], indent=2)}
+
+USER'S LOW PERFORMING CONTENT (what to avoid):
+{json.dumps([{"ups": i.get("ups"), "subreddit": i.get("subreddit"), "content": i.get("content", i.get("title", ""))[:100]} for i in low_items], indent=2)}
+
+TOP SUBREDDITS BY PERFORMANCE:
+{json.dumps([(s[0], {"avg_ups": round(s[1]["avg"], 1), "count": s[1]["count"]}) for s in top_subs], indent=2)}
+
+TONE STATS: {json.dumps({k: {"avg": round(v["avg"], 1), "count": v["count"]} for k, v in list(stats["tone_stats"].items())[:5]}, indent=2)}
+TOPIC STATS: {json.dumps({k: {"avg": round(v["avg"], 1), "count": v["count"]} for k, v in list(stats["topic_stats"].items())[:5]}, indent=2)}
+{subreddit_context}
+
+Generate recommendations in this JSON format:
+{{
+  "post_ideas": [
+    {{"title": "...", "subreddit": "...", "predicted_ups": "X-Y", "confidence": "high/medium", "why": "..."}}
+  ],
+  "comment_strategies": [
+    {{"strategy": "...", "example_from_data": "...", "when_to_use": "...", "predicted_impact": "X-Y ups", "key_ingredients": "..."}}
+  ],
+  "avoid": [
+    {{"pattern": "...", "example_from_data": "...", "why_fails": "...", "fix": "..."}}
+  ],
+  "subreddit_playbook": [
+    {{"subreddit": "...", "avg_ups": X, "winning_formula": "...", "ideal_tone": ["..."]}}
+  ]
+}}
+
+Generate 5 post ideas, 3 comment strategies, 3 things to avoid, and playbooks for top 3 subreddits.
+{"Focus especially on r/" + subreddit + " since the user wants recommendations for that subreddit." if subreddit else ""}
+Be specific and reference their actual data. Return ONLY valid JSON."""
+
+    result = call_claude(prompt)
+
+    # Parse JSON from response
+    try:
+        # Try to extract JSON from response
+        json_start = result.find("{")
+        json_end = result.rfind("}") + 1
+        if json_start >= 0 and json_end > json_start:
+            recommendations = json.loads(result[json_start:json_end])
+        else:
+            raise ValueError("No JSON found")
+    except (json.JSONDecodeError, ValueError):
+        # Return raw result if JSON parsing fails
+        return {
+            "success": False,
+            "message": "Failed to parse AI response",
+            "raw_response": result[:500]
+        }
+
+    # Save to profile
+    recs_path = get_profile_data_path(active_profile, "recommendations.json")
+    save_json_file(recs_path, recommendations)
+
+    # Also save to dashboard public for frontend
+    dashboard_recs_path = os.path.join(settings.DASHBOARD_PUBLIC_DIR, "recommendations.json")
+    save_json_file(dashboard_recs_path, recommendations)
+
+    return {
+        "success": True,
+        "message": f"Recommendations refreshed" + (f" with focus on r/{subreddit}" if subreddit else ""),
+        "recommendations": recommendations
+    }
+
+
+@router.get("/recommendations")
+def get_recommendations():
+    """Get current recommendations."""
+    import os
+
+    active_profile = get_active_profile()
+    if active_profile:
+        recs_path = get_profile_data_path(active_profile, "recommendations.json")
+        recs = load_json_file(recs_path)
+        if recs:
+            return {"success": True, "recommendations": recs}
+
+    # Fallback to dashboard public
+    dashboard_recs_path = os.path.join(settings.DASHBOARD_PUBLIC_DIR, "recommendations.json")
+    recs = load_json_file(dashboard_recs_path)
+    if recs:
+        return {"success": True, "recommendations": recs}
+
+    return {"success": False, "message": "No recommendations found. Use /api/recommendations/refresh to generate."}
