@@ -103,6 +103,87 @@ Be specific and practical. Focus on patterns in the data."""
     }
 
 
+@router.post("/community/culture")
+def community_culture_guide(req: AnalyzeRequest):
+    """
+    Generate a culture guide for a subreddit — no active profile required.
+    Designed for new users who want to understand a community before posting.
+    """
+    import json as _json
+
+    subreddit = req.subreddit.strip().replace("r/", "").replace("/", "")
+
+    posts_data = fetch_subreddit_posts(subreddit, limit=50, sort="top", time_filter="year")
+
+    if not posts_data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No data found for r/{subreddit}",
+        )
+
+    items = [process_post_for_storage(p) for p in posts_data]
+    stats = analyze_items(items)
+
+    top_titles = [i.get("title", i.get("content", ""))[:120] for i in items[:15] if i.get("title") or i.get("content")]
+
+    top_tones = sorted(
+        stats["tone_stats"].items(),
+        key=lambda x: x[1]["avg"],
+        reverse=True
+    )[:5]
+    top_topics = sorted(
+        stats["topic_stats"].items(),
+        key=lambda x: x[1]["avg"],
+        reverse=True
+    )[:5]
+
+    prompt = f"""You are helping a brand-new Reddit user understand r/{subreddit} before they post.
+
+Analyze these top posts from the past year:
+{chr(10).join(f"- {t}" for t in top_titles)}
+
+Top performing tones: {top_tones}
+Top performing topics: {top_topics}
+Total posts analyzed: {len(items)}
+
+Return a JSON object with exactly these keys (no extra keys, no markdown fences):
+{{
+  "vibe": ["2-4 short adjectives describing community culture"],
+  "what_gets_upvoted": ["3-5 specific content types or themes that perform well"],
+  "removal_risks": ["3-4 things that commonly get posts removed or downvoted"],
+  "unwritten_rules": ["3-4 cultural norms not found in the sidebar"],
+  "how_to_start": ["2-3 concrete first post or comment ideas tailored to this community"],
+  "karma_tip": "one sentence about any karma/account age requirements or tips"
+}}
+
+Be specific to r/{subreddit}. Return ONLY valid JSON."""
+
+    raw = call_claude(prompt)
+
+    try:
+        json_start = raw.find("{")
+        json_end = raw.rfind("}") + 1
+        if json_start >= 0 and json_end > json_start:
+            guide = _json.loads(raw[json_start:json_end])
+        else:
+            raise ValueError("No JSON found")
+    except (ValueError, _json.JSONDecodeError):
+        guide = {
+            "vibe": [],
+            "what_gets_upvoted": [],
+            "removal_risks": [],
+            "unwritten_rules": [],
+            "how_to_start": [],
+            "karma_tip": raw[:300] if raw else "Could not generate tip.",
+        }
+
+    return {
+        "subreddit": subreddit,
+        "posts_analyzed": len(items),
+        **guide,
+    }
+
+
 @router.post("/validate")
 def validate_content(req: ValidateRequest):
     """

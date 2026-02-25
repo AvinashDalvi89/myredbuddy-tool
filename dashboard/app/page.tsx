@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import {
   FiSettings,
@@ -47,7 +48,7 @@ import {
   HiOutlineClipboardCheck
 } from "react-icons/hi";
 
-type TabType = "setup" | "dashboard" | "recommendations" | "competitors" | "validator" | "shield" | "insights" | "help";
+type TabType = "setup" | "dashboard" | "recommendations" | "competitors" | "guide" | "validator" | "shield" | "insights" | "help";
 type DashboardSubTab = "overview" | "performance" | "analytics";
 
 // Set to true to enable personal features (comment suggestions)
@@ -59,6 +60,7 @@ const TAB_LABELS: Record<TabType, string> = {
   dashboard: "Dashboard",
   recommendations: "Recommendations",
   competitors: "Competitor Analysis",
+  guide: "Community Guide",
   validator: "Pre-Post Checker",
   shield: "Reputation Shield",
   insights: "Removal Insights",
@@ -215,6 +217,7 @@ const NAV_ITEMS: { key: TabType; label: string; icon: React.ReactNode; personal?
   { key: "dashboard", label: "Dashboard", icon: <FiBarChart2 className="w-4 h-4" /> },
   { key: "recommendations", label: "Recommendations", icon: <HiOutlineLightBulb className="w-4 h-4" /> },
   { key: "competitors", label: "Competitor Analysis", icon: <FiSearch className="w-4 h-4" /> },
+  { key: "guide", label: "Community Guide", icon: <FiBook className="w-4 h-4" /> },
   { key: "validator", label: "Pre-Post Checker", icon: <FiMessageSquare className="w-4 h-4" /> },
   { key: "shield", label: "Reputation Shield", icon: <FiShield className="w-4 h-4" /> },
   { key: "insights", label: "Removal Insights", icon: <FiTrendingUp className="w-4 h-4" /> },
@@ -287,6 +290,17 @@ interface Recommendations {
     low_performing_comment_profile: Record<string, number>;
     insight: string;
   };
+}
+
+interface GuideResult {
+  subreddit: string;
+  posts_analyzed: number;
+  vibe: string[];
+  what_gets_upvoted: string[];
+  removal_risks: string[];
+  unwritten_rules: string[];
+  how_to_start: string[];
+  karma_tip: string;
 }
 
 const TONE_COLORS: Record<string, string> = {
@@ -411,7 +425,7 @@ function Pagination({
 }
 
 // Valid tabs for URL routing
-const VALID_TABS: TabType[] = ["dashboard", "setup", "recommendations", "competitors", "validator", "shield", "insights", "help"];
+const VALID_TABS: TabType[] = ["dashboard", "setup", "recommendations", "competitors", "guide", "validator", "shield", "insights", "help"];
 
 function getTabFromHash(): TabType {
   if (typeof window === "undefined") return "dashboard";
@@ -453,6 +467,9 @@ export default function Dashboard() {
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestResult, setSuggestResult] = useState("");
   const [competitorAnalysis, setCompetitorAnalysis] = useState("");
+  const [guideSub, setGuideSub] = useState("");
+  const [guideLoading, setGuideLoading] = useState(false);
+  const [guideResult, setGuideResult] = useState<GuideResult | null>(null);
   const [importUsername, setImportUsername] = useState("");
   const [importLoading, setImportLoading] = useState(false);
   const [importResult, setImportResult] = useState<{success: boolean; message: string} | null>(null);
@@ -519,6 +536,18 @@ export default function Dashboard() {
   const [confirmOwnAccount, setConfirmOwnAccount] = useState(true);
   const [showExportData, setShowExportData] = useState<{username: string; data: object} | null>(null);
 
+  // Setup tab — persona & goals form
+  const [setupGoal, setSetupGoal] = useState("");
+  const [setupName, setSetupName] = useState("");
+  const [setupRole, setSetupRole] = useState("");
+  const [setupYears, setSetupYears] = useState(1);
+  const [setupExpertise, setSetupExpertise] = useState<string[]>([]);
+  const [setupExpertiseInput, setSetupExpertiseInput] = useState("");
+  const [setupSubs, setSetupSubs] = useState<string[]>([]);
+  const [setupSubInput, setSetupSubInput] = useState("");
+  const [setupSaving, setSetupSaving] = useState(false);
+  const [setupSaved, setSetupSaved] = useState(false);
+
   // URL hash routing - initialize tab from URL on mount
   useEffect(() => {
     setIsClient(true);
@@ -548,10 +577,8 @@ export default function Dashboard() {
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setIsInitialLoading(false));
-    fetch("/recommendations.json")
-      .then((r) => r.json())
-      .then(setRecs)
-      .catch(() => setRecs(null));
+    // Recommendations are never auto-loaded — always generated on-demand
+    // per active profile to prevent stale data from other accounts showing.
     // Check API status
     fetch(`${API_BASE}/api/status`)
       .then((r) => r.json())
@@ -580,6 +607,44 @@ export default function Dashboard() {
   }, []);
 
   const API_BASE = "http://localhost:8000";
+  const router = useRouter();
+  // Prevent re-redirecting if we just came back from /onboarding
+  const redirectedRef = useRef(false);
+
+  // Clear recommendations whenever the active profile changes — prevents
+  // stale recs from a different account bleeding into the current profile view.
+  useEffect(() => {
+    setRecs(null);
+    setRecsFocusSub("");
+  }, [profiles?.active_profile]);
+
+  // Redirect to /onboarding when no active profile is linked.
+  // If the user landed here with ?onboarded=1 (came back from onboarding
+  // without importing), skip the redirect this session and clean the URL.
+  useEffect(() => {
+    if (!isInitialLoading && profiles !== null && !profiles?.active_profile) {
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("onboarded") === "1") {
+          // Clean URL, let them stay on the page
+          window.history.replaceState({}, "", window.location.hash || "/");
+          return;
+        }
+        // Pre-fill import username if onboarding passed one
+        const importParam = params.get("import");
+        if (importParam) {
+          setImportUsername(decodeURIComponent(importParam));
+          window.history.replaceState({}, "", window.location.hash || "/");
+          setTab("setup");
+          return;
+        }
+      }
+      if (!redirectedRef.current) {
+        redirectedRef.current = true;
+        router.push("/onboarding");
+      }
+    }
+  }, [isInitialLoading, profiles]);
 
   // Refresh profiles list
   const refreshProfiles = async () => {
@@ -618,11 +683,68 @@ export default function Dashboard() {
   // Delete profile
   const deleteProfile = async (username: string) => {
     if (!confirm(`Remove profile "${username}" from the list? (Data files will be preserved)`)) return;
+    const wasActive = profiles?.active_profile === username;
     try {
       await fetch(`${API_BASE}/api/profiles/${username}`, { method: "DELETE" });
       await refreshProfiles();
+      if (wasActive) {
+        setData(null);
+        redirectedRef.current = false;
+        router.push("/onboarding");
+      }
     } catch {
       // ignore
+    }
+  };
+
+  // Load existing persona into setup form when entering setup tab
+  useEffect(() => {
+    if (tab === "setup") {
+      fetch(`${API_BASE}/api/persona`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.exists && d.persona) {
+            const p = d.persona;
+            setSetupName(p.name || "");
+            setSetupRole(p.current_role || "");
+            setSetupYears(p.experience_years || 1);
+            setSetupExpertise(p.expertise?.main || []);
+            setSetupSubs(p.domains || []);
+            setSetupGoal(p.personality?.goal || "");
+          }
+        })
+        .catch(() => {});
+    }
+  }, [tab]);
+
+  // Save persona from setup tab
+  const saveSetupPersona = async () => {
+    setSetupSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/persona`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: setupName.trim() || profiles?.active_profile || "User",
+          experience_years: setupYears,
+          current_role: setupRole.trim() || "Not specified",
+          expertise: setupExpertise.length > 0 ? setupExpertise : ["general"],
+          domains: setupSubs,
+          real_experiences: [],
+          goal: setupGoal,
+        }),
+      });
+      if (res.ok) {
+        setSetupSaved(true);
+        setTimeout(() => setSetupSaved(false), 3000);
+        fetch(`${API_BASE}/api/status`).then((r) => r.json()).then(setApiStatus).catch(() => {});
+      } else {
+        alert("Failed to save. Make sure api.py is running.");
+      }
+    } catch {
+      alert("Could not connect to API.");
+    } finally {
+      setSetupSaving(false);
     }
   };
 
@@ -744,31 +866,127 @@ export default function Dashboard() {
     );
   }
 
-  // Show setup prompt if no data after loading
+
+  // Tabs that require an imported account to be useful
+  const ACCOUNT_DEPENDENT_TABS: TabType[] = ["dashboard", "recommendations", "insights"];
+
+  // Reusable sidebar (used in both no-account and no-data states below)
+  const Sidebar = () => (
+    <div className="w-56 bg-gray-900/80 border-r border-gray-800 p-4 flex-shrink-0">
+      <div className="mb-6">
+        <img src="/myredditbuddy-logo.png" alt="MyRedBuddy" className="h-8 w-auto" />
+      </div>
+      <nav className="space-y-1">
+        {NAV_ITEMS.filter(item => !item.personal || ENABLE_PERSONAL_FEATURES).map((item) => (
+          <button
+            key={item.key}
+            onClick={() => setTab(item.key)}
+            className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${
+              tab === item.key
+                ? "bg-orange-500/20 text-orange-400"
+                : "text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+            }`}
+          >
+            {item.icon}
+            {item.label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+
+  // No active profile — intercept account-dependent tabs
+  if (!profiles?.active_profile && ACCOUNT_DEPENDENT_TABS.includes(tab)) {
+    return (
+      <div className="flex min-h-screen">
+        <Sidebar />
+        <div className="flex-1 p-6 overflow-auto">
+          <div className="max-w-xl mx-auto mt-12 space-y-4">
+
+            {/* PRIMARY: Community Guide */}
+            <div className="bg-gray-900/50 border-2 border-orange-500/50 rounded-xl p-6">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2.5 rounded-xl bg-orange-500/15 border border-orange-500/30 flex-shrink-0">
+                  <FiBook className="w-5 h-5 text-orange-400" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-100">Community Guide</h2>
+                  <p className="text-xs text-gray-400">Understand any subreddit before you post — no account needed</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <div className="flex items-center flex-1 bg-gray-800 border border-gray-700 rounded-lg overflow-hidden focus-within:border-orange-500">
+                  <span className="pl-3 text-gray-500 text-sm select-none">r/</span>
+                  <input
+                    type="text"
+                    placeholder="subreddit name"
+                    value={guideSub}
+                    onChange={(e) => setGuideSub(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { setTab("guide"); fetchCommunityGuide(guideSub); } }}
+                    className="flex-1 px-2 py-2.5 bg-transparent text-gray-200 text-sm focus:outline-none"
+                  />
+                </div>
+                <button
+                  onClick={() => { setTab("guide"); fetchCommunityGuide(guideSub); }}
+                  disabled={!guideSub.trim()}
+                  className="px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg text-sm transition-colors disabled:opacity-40 whitespace-nowrap"
+                >
+                  Get Guide
+                </button>
+              </div>
+            </div>
+
+            {/* SECONDARY: Set up account */}
+            <div className="bg-gray-900/30 border border-gray-800 rounded-xl p-5">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="p-2 rounded-lg bg-gray-800 flex-shrink-0">
+                  <FiUser className="w-4 h-4 text-gray-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-200">Want personalized insights?</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Link your Reddit account to see what's working for <em>you</em> — your top content, what to post next, and where to focus.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => router.push("/onboarding")}
+                className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-200 font-medium rounded-lg transition-colors text-sm"
+              >
+                Set up my account →
+              </button>
+            </div>
+
+            {/* TERTIARY: Other no-account tools */}
+            <div>
+              <p className="text-xs text-gray-600 mb-2 text-center">Other tools — no account needed</p>
+              <div className="flex gap-2 justify-center flex-wrap">
+                {[
+                  { key: "competitors" as TabType, icon: <FiSearch className="w-3.5 h-3.5" />, label: "Competitor Analysis" },
+                  { key: "validator" as TabType, icon: <FiMessageSquare className="w-3.5 h-3.5" />, label: "Pre-Post Checker" },
+                  { key: "shield" as TabType, icon: <FiShield className="w-3.5 h-3.5" />, label: "Reputation Shield" },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    onClick={() => setTab(item.key)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900/50 hover:bg-gray-800 border border-gray-800 hover:border-gray-700 rounded-lg text-xs text-gray-400 hover:text-gray-200 transition-colors"
+                  >
+                    {item.icon}
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // No data at all (e.g. data.json missing) — catch-all for non-setup tabs
   if (!data && tab !== "setup") {
     return (
       <div className="flex min-h-screen">
-        <div className="w-56 bg-gray-900/80 border-r border-gray-800 p-4 flex-shrink-0">
-          <div className="mb-6">
-          <img src="/myredditbuddy-logo.png" alt="MyRedBuddy" className="h-8 w-auto" />
-        </div>
-          <nav className="space-y-1">
-            {NAV_ITEMS.filter(item => !item.personal || ENABLE_PERSONAL_FEATURES).map((item) => (
-              <button
-                key={item.key}
-                onClick={() => setTab(item.key)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${
-                  tab === item.key
-                    ? "bg-orange-500/20 text-orange-400"
-                    : "text-gray-400 hover:bg-gray-800 hover:text-gray-200"
-                }`}
-              >
-                {item.icon}
-                {item.label}
-              </button>
-            ))}
-          </nav>
-        </div>
+        <Sidebar />
         <div className="flex-1 p-6 flex items-center justify-center">
           <div className="text-center">
             <p className="text-gray-400 mb-4">No data loaded yet.</p>
@@ -1135,6 +1353,30 @@ export default function Dashboard() {
     setCompetitorLoading(false);
   };
 
+  const fetchCommunityGuide = async (subredditOverride?: string) => {
+    const sub = (subredditOverride ?? guideSub).trim().replace("r/", "").replace("/", "");
+    if (!sub) return;
+    setGuideLoading(true);
+    setGuideResult(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/community/culture`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subreddit: sub, limit: 50 }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setGuideResult(data);
+        if (!guideSub) setGuideSub(sub);
+      } else {
+        setGuideResult(null);
+      }
+    } catch {
+      setGuideResult(null);
+    }
+    setGuideLoading(false);
+  };
+
   return (
     <div className="flex min-h-screen">
       {/* Sidebar */}
@@ -1475,13 +1717,150 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Persona Setup */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-gray-300 mb-2">Persona Setup</h3>
-            <p className="text-sm text-gray-500 mb-4">Your persona helps generate authentic comments that match your real experience.</p>
-            <p className="text-xs text-gray-400 mb-2">Create or edit <code className="text-orange-400">persona.json</code> in the project root, or use:</p>
-            <code className="text-xs text-orange-400 block bg-gray-800/50 p-3 rounded">POST /api/persona</code>
-            <p className="text-xs text-gray-500 mt-3">See <code className="text-blue-400">persona.example.json</code> for the format.</p>
+          {/* Persona & Goals */}
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-300">Persona & Goals</h3>
+              <p className="text-sm text-gray-500 mt-1">Tell MyRedBuddy about yourself so recommendations and validation are tailored to you — not generic advice.</p>
+            </div>
+
+            {/* Goal */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-3">What's your main goal on Reddit?</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[
+                  { value: "share_expertise", label: "Share expertise & help others", desc: "Answer questions, contribute knowledge" },
+                  { value: "build_authority", label: "Build authority in my niche", desc: "Establish credibility over time" },
+                  { value: "promote_work", label: "Promote my work authentically", desc: "Drive awareness without spamming" },
+                  { value: "explore", label: "Just explore and contribute", desc: "No specific agenda, see what works" },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setSetupGoal(opt.value)}
+                    className={`text-left px-4 py-3 rounded-xl border transition-all ${
+                      setupGoal === opt.value
+                        ? "bg-orange-500/15 border-orange-500/50 text-gray-100"
+                        : "bg-gray-800/40 border-gray-700 text-gray-300 hover:border-gray-600"
+                    }`}
+                  >
+                    <p className="text-sm font-medium">{opt.label}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* About you */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-1">
+                <label className="block text-xs text-gray-400 mb-1.5">Your name or handle</label>
+                <input
+                  type="text"
+                  value={setupName}
+                  onChange={(e) => setSetupName(e.target.value)}
+                  placeholder="e.g. Alex"
+                  className="w-full px-3 py-2.5 bg-gray-800/50 border border-gray-700 rounded-xl text-gray-100 placeholder-gray-600 focus:outline-none focus:border-orange-500 text-sm"
+                />
+              </div>
+              <div className="md:col-span-1">
+                <label className="block text-xs text-gray-400 mb-1.5">Current role or background</label>
+                <input
+                  type="text"
+                  value={setupRole}
+                  onChange={(e) => setSetupRole(e.target.value)}
+                  placeholder="e.g. Senior Engineer, Indie founder"
+                  className="w-full px-3 py-2.5 bg-gray-800/50 border border-gray-700 rounded-xl text-gray-100 placeholder-gray-600 focus:outline-none focus:border-orange-500 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5">Years of experience</label>
+                <select
+                  value={setupYears}
+                  onChange={(e) => setSetupYears(Number(e.target.value))}
+                  className="w-full px-3 py-2.5 bg-gray-800/50 border border-gray-700 rounded-xl text-gray-100 focus:outline-none focus:border-orange-500 text-sm"
+                >
+                  {[1, 2, 3, 5, 7, 10, 15, 20].map((y) => (
+                    <option key={y} value={y}>{y}+ years</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Expertise tags */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-2">
+                What are you an expert in? <span className="text-gray-600">(press Enter or comma to add)</span>
+              </label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {setupExpertise.map((tag, i) => (
+                  <span key={i} className="flex items-center gap-1 px-2.5 py-1 bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded-full text-xs">
+                    {tag}
+                    <button onClick={() => setSetupExpertise(setupExpertise.filter((_, idx) => idx !== i))} className="hover:text-white ml-0.5">×</button>
+                  </span>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={setupExpertiseInput}
+                onChange={(e) => setSetupExpertiseInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === ",") && setupExpertiseInput.trim()) {
+                    e.preventDefault();
+                    const val = setupExpertiseInput.trim().replace(/,$/, "");
+                    if (val && !setupExpertise.includes(val)) setSetupExpertise([...setupExpertise, val]);
+                    setSetupExpertiseInput("");
+                  }
+                }}
+                placeholder="e.g. TypeScript, SEO, finance..."
+                className="w-full px-3 py-2.5 bg-gray-800/50 border border-gray-700 rounded-xl text-gray-100 placeholder-gray-600 focus:outline-none focus:border-orange-500 text-sm"
+              />
+            </div>
+
+            {/* Target subreddits */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-2">
+                Target subreddits <span className="text-gray-600">(where you want to contribute — press Enter or comma to add)</span>
+              </label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {setupSubs.map((sub, i) => (
+                  <span key={i} className="flex items-center gap-1 px-2.5 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full text-xs">
+                    r/{sub}
+                    <button onClick={() => setSetupSubs(setupSubs.filter((_, idx) => idx !== i))} className="hover:text-white ml-0.5">×</button>
+                  </span>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={setupSubInput}
+                onChange={(e) => setSetupSubInput(e.target.value.replace(/^r\//, ""))}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === ",") && setupSubInput.trim()) {
+                    e.preventDefault();
+                    const val = setupSubInput.trim().replace(/^r\//, "").replace(/,$/, "");
+                    if (val && !setupSubs.includes(val)) setSetupSubs([...setupSubs, val]);
+                    setSetupSubInput("");
+                  }
+                }}
+                placeholder="e.g. webdev, startups, personalfinance..."
+                className="w-full px-3 py-2.5 bg-gray-800/50 border border-gray-700 rounded-xl text-gray-100 placeholder-gray-600 focus:outline-none focus:border-orange-500 text-sm"
+              />
+            </div>
+
+            {/* Save */}
+            <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
+              <button
+                onClick={saveSetupPersona}
+                disabled={setupSaving}
+                className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors text-sm flex items-center gap-2"
+              >
+                {setupSaving ? <><FiRefreshCw className="w-4 h-4 animate-spin" /> Saving...</> : "Save changes"}
+              </button>
+              {setupSaved && (
+                <span className="flex items-center gap-1.5 text-sm text-emerald-400">
+                  <FiCheckCircle className="w-4 h-4" /> Saved
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Subreddit Rules Guide */}
@@ -1693,44 +2072,73 @@ export default function Dashboard() {
               <h1 className="text-2xl font-bold text-gray-100">AI Recommendations</h1>
               <p className="text-gray-500 text-sm mt-1">Personalized suggestions based on your Reddit performance data</p>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex">
-                <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-gray-700 bg-gray-800 text-gray-500 text-sm">r/</span>
-                <input
-                  type="text"
-                  value={recsFocusSub}
-                  onChange={(e) => setRecsFocusSub(e.target.value)}
-                  placeholder="subreddit (optional)"
-                  className="w-40 px-3 py-2 bg-gray-800 border border-gray-700 rounded-r-lg text-gray-200 placeholder-gray-500 text-sm focus:outline-none focus:border-orange-500"
-                />
+            {/* Header refresh controls — only shown when recs are already loaded */}
+            {recs && (
+              <div className="flex items-center gap-2">
+                <div className="flex">
+                  <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-gray-700 bg-gray-800 text-gray-500 text-sm">r/</span>
+                  <input
+                    type="text"
+                    value={recsFocusSub}
+                    onChange={(e) => setRecsFocusSub(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && refreshRecommendations(recsFocusSub || undefined)}
+                    placeholder="optional: focus subreddit"
+                    className="w-44 px-3 py-2 bg-gray-800 border border-gray-700 rounded-r-lg text-gray-200 placeholder-gray-500 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <button
+                  onClick={() => refreshRecommendations(recsFocusSub || undefined)}
+                  disabled={recsLoading}
+                  className="px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {recsLoading ? (
+                    <FiRefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <FiRefreshCw className="w-4 h-4" />
+                  )}
+                  {recsLoading ? "Generating..." : "Refresh"}
+                </button>
               </div>
-              <button
-                onClick={() => refreshRecommendations(recsFocusSub || undefined)}
-                disabled={recsLoading}
-                className="px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
-              >
-                {recsLoading ? (
-                  <FiRefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <FiRefreshCw className="w-4 h-4" />
-                )}
-                {recsLoading ? "Generating..." : "Refresh"}
-              </button>
-            </div>
+            )}
           </div>
 
           {!recs ? (
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8 text-center">
-              <HiOutlineLightBulb className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-300 mb-2">No Recommendations Yet</h3>
-              <p className="text-gray-500 mb-4">Click Refresh to generate AI-powered recommendations based on your Reddit data.</p>
-              <button
-                onClick={() => refreshRecommendations()}
-                disabled={recsLoading}
-                className="px-6 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors disabled:opacity-50"
-              >
-                {recsLoading ? "Generating..." : "Generate Recommendations"}
-              </button>
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8 max-w-lg mx-auto">
+              <HiOutlineLightBulb className="w-10 h-10 text-orange-400/60 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-100 text-center mb-1">Get AI recommendations</h3>
+              <p className="text-gray-500 text-sm text-center mb-6">Based on your Reddit performance data. Optionally focus on a specific subreddit for targeted advice.</p>
+
+              <div className="flex gap-2 mb-4">
+                <div className="flex flex-1">
+                  <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-gray-700 bg-gray-800 text-gray-500 text-sm">r/</span>
+                  <input
+                    type="text"
+                    value={recsFocusSub}
+                    onChange={(e) => setRecsFocusSub(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && refreshRecommendations(recsFocusSub || undefined)}
+                    placeholder="optional: focus subreddit"
+                    className="flex-1 px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-r-lg text-gray-200 placeholder-gray-500 text-sm focus:outline-none focus:border-orange-500"
+                    autoFocus
+                  />
+                </div>
+                <button
+                  onClick={() => refreshRecommendations(recsFocusSub || undefined)}
+                  disabled={recsLoading}
+                  className="px-4 py-2.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors text-sm flex items-center gap-2"
+                >
+                  {recsLoading ? <><FiRefreshCw className="w-4 h-4 animate-spin" /> Generating...</> : "Generate"}
+                </button>
+              </div>
+
+              {/* Disclaimer */}
+              <div className="flex items-start gap-2.5 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <FiInfo className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-blue-300/80 leading-relaxed">
+                  <span className="font-medium text-blue-300">Works best with real contribution history.</span>{" "}
+                  Without a subreddit focus, recommendations cover all your top communities.
+                  Add a subreddit to get targeted advice for that community specifically.
+                </p>
+              </div>
             </div>
           ) : (
             <>
@@ -2421,6 +2829,170 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Community Guide Tab */}
+      {tab === "guide" && (
+        <div className="space-y-6">
+          <Breadcrumb items={[{ label: "Community Guide" }]} />
+
+          <div>
+            <h1 className="text-2xl font-bold text-gray-100">Community Guide</h1>
+            <p className="text-gray-500 text-sm mt-1">Understand any subreddit's culture before you post — no account needed</p>
+          </div>
+
+          {/* Subreddit input row */}
+          <div className="flex gap-3">
+            <div className="flex items-center flex-1 max-w-sm bg-gray-900 border border-gray-700 rounded-lg overflow-hidden focus-within:border-orange-500">
+              <span className="pl-3 text-gray-500 text-sm select-none">r/</span>
+              <input
+                type="text"
+                placeholder="subreddit name"
+                value={guideSub}
+                onChange={(e) => setGuideSub(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") fetchCommunityGuide(); }}
+                className="flex-1 px-2 py-2 bg-transparent text-gray-200 focus:outline-none"
+              />
+            </div>
+            <button
+              onClick={() => fetchCommunityGuide()}
+              disabled={guideLoading || !guideSub.trim()}
+              className="px-6 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 disabled:opacity-50 transition-colors"
+            >
+              {guideLoading ? "Loading..." : "Get Culture Guide"}
+            </button>
+          </div>
+
+          {/* Loading */}
+          {guideLoading && (
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8 text-center">
+              <FiRefreshCw className="w-6 h-6 text-orange-400 animate-spin mx-auto mb-3" />
+              <p className="text-orange-400 font-medium">Reading r/{guideSub} culture...</p>
+              <p className="text-gray-500 text-sm mt-1">This may take 30–60 seconds</p>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!guideLoading && !guideResult && (
+            <div className="bg-gray-900/30 border border-gray-800 rounded-xl p-10 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-purple-500/15 border border-purple-500/25 flex items-center justify-center mx-auto mb-4">
+                <FiBook className="w-7 h-7 text-purple-400" />
+              </div>
+              <h3 className="text-gray-200 font-semibold mb-2">Decode any community</h3>
+              <p className="text-gray-500 text-sm max-w-sm mx-auto leading-relaxed">
+                Enter a subreddit name above to get a cultural briefing — what gets upvoted, unwritten rules, removal risks, and how to make your first post.
+              </p>
+            </div>
+          )}
+
+          {/* Results */}
+          {!guideLoading && guideResult && (
+            <div className="space-y-4">
+              <p className="text-xs text-gray-600">Based on {guideResult.posts_analyzed} top posts from r/{guideResult.subreddit}</p>
+
+              {/* Row 1: Vibe + Karma tip */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Community Vibe */}
+                <div className="bg-gray-900/50 border border-purple-500/25 rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-purple-400 mb-3 flex items-center gap-2">
+                    <FiActivity className="w-4 h-4" /> Community Vibe
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {guideResult.vibe.map((v, i) => (
+                      <span key={i} className="px-3 py-1 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-full text-xs font-medium">
+                        {v}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* New Account Tip */}
+                <div className="bg-gray-900/50 border border-blue-500/25 rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2">
+                    <FiInfo className="w-4 h-4" /> New Account Tip
+                  </h3>
+                  <p className="text-gray-300 text-sm leading-relaxed">{guideResult.karma_tip}</p>
+                </div>
+              </div>
+
+              {/* Row 2: What gets upvoted + Watch out for */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* What Gets Upvoted */}
+                <div className="bg-gray-900/50 border border-emerald-500/25 rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-emerald-400 mb-3 flex items-center gap-2">
+                    <FiThumbsUp className="w-4 h-4" /> What Gets Upvoted
+                  </h3>
+                  <ul className="space-y-2">
+                    {guideResult.what_gets_upvoted.map((item, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
+                        <span className="text-emerald-400 mt-0.5 flex-shrink-0">+</span>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Watch Out For */}
+                <div className="bg-gray-900/50 border border-red-500/25 rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2">
+                    <FiAlertTriangle className="w-4 h-4" /> Watch Out For
+                  </h3>
+                  <ul className="space-y-2">
+                    {guideResult.removal_risks.map((item, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
+                        <span className="text-red-400 mt-0.5 flex-shrink-0">!</span>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Row 3: Unwritten Rules (full width) */}
+              <div className="bg-gray-900/50 border border-amber-500/25 rounded-xl p-5">
+                <h3 className="text-sm font-semibold text-amber-400 mb-3 flex items-center gap-2">
+                  <FiHelpCircle className="w-4 h-4" /> Unwritten Rules
+                </h3>
+                <ul className="space-y-2">
+                  {guideResult.unwritten_rules.map((item, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
+                      <span className="text-amber-400 mt-0.5 flex-shrink-0">•</span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Row 4: How to Start (prominent, full width) */}
+              <div className="bg-gradient-to-br from-orange-500/15 to-orange-600/5 border border-orange-500/30 rounded-xl p-6">
+                <h3 className="text-base font-semibold text-orange-400 mb-4 flex items-center gap-2">
+                  <FiZap className="w-4 h-4" /> How to Start
+                </h3>
+                <ol className="space-y-3">
+                  {guideResult.how_to_start.map((idea, i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-orange-500/30 text-orange-300 text-xs font-bold flex items-center justify-center mt-0.5">
+                        {i + 1}
+                      </span>
+                      <span className="text-gray-200 text-sm leading-relaxed">{idea}</span>
+                    </li>
+                  ))}
+                </ol>
+                <div className="mt-5 pt-4 border-t border-orange-500/20">
+                  <p className="text-xs text-gray-500 mb-2">Ready to write your first post?</p>
+                  <button
+                    onClick={() => setTab("validator")}
+                    className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    <FiCheckCircle className="w-4 h-4" />
+                    Check it with Pre-Post Checker →
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Pre-Post Checker Tab */}
       {tab === "validator" && (
         <div className="space-y-6">
@@ -2431,6 +3003,26 @@ export default function Dashboard() {
             <h1 className="text-2xl font-bold text-gray-100">Pre-Post Checker</h1>
             <p className="text-gray-500 text-sm mt-1">Validate your draft and run a reputation shield check before posting</p>
           </div>
+
+          {/* No-account warning */}
+          {!profiles?.active_profile && (
+            <div className="flex items-start gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/25 rounded-xl">
+              <FiAlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-amber-300 font-medium">Running on assumptions, not your data</p>
+                <p className="text-xs text-amber-400/70 mt-0.5">
+                  Since you haven't linked an account, validation can't reference your posting history or patterns.
+                  Results are based on general subreddit rules only — they may not reflect what actually works for you.
+                </p>
+              </div>
+              <button
+                onClick={() => router.push("/onboarding")}
+                className="flex-shrink-0 text-xs text-amber-400 hover:text-amber-300 underline underline-offset-2 transition-colors whitespace-nowrap"
+              >
+                Set up account
+              </button>
+            </div>
+          )}
 
           {/* Input Form Card */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">

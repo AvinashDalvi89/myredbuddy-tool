@@ -10,6 +10,10 @@ from typing import Optional, List, Dict, Any
 # Import Models
 # =============================================================================
 
+class OnboardingCheckRequest(BaseModel):
+    username: str
+
+
 class ImportUsernameRequest(BaseModel):
     username: str
     posts_limit: Optional[int] = 50
@@ -45,6 +49,7 @@ class PersonaRequest(BaseModel):
     expertise: List[str]
     domains: List[str]
     real_experiences: List[str]
+    goal: Optional[str] = ""
 
 
 # =============================================================================

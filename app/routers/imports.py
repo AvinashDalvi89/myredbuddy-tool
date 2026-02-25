@@ -5,9 +5,9 @@ Data Import Endpoints
 import time
 from fastapi import APIRouter, HTTPException
 
-from app.models import ImportUsernameRequest, ImportPasteRequest, PersonaRequest
+from app.models import ImportUsernameRequest, ImportPasteRequest, PersonaRequest, OnboardingCheckRequest
 from app.config import settings
-from app.services.reddit import fetch_user_posts, fetch_user_comments
+from app.services.reddit import fetch_user_posts, fetch_user_comments, fetch_user_profile
 from app.services.storage import (
     get_profile_index,
     save_profile_index,
@@ -28,6 +28,43 @@ from app.services.analysis import (
 )
 
 router = APIRouter(prefix="/api", tags=["Import"])
+
+
+@router.post("/onboarding/check")
+def onboarding_check(req: OnboardingCheckRequest):
+    """
+    Check a Reddit username and classify the user type for onboarding routing.
+    Returns user_type: 'new' | 'experienced' | 'recovery' and a recommended_flow.
+    """
+    username = req.username.strip().replace("u/", "").replace("/", "")
+    profile = fetch_user_profile(username)
+
+    is_suspended = profile.get("is_suspended", False)
+    is_banned = profile.get("is_banned", False)
+    total_karma = profile.get("total_karma", 0)
+    account_age_days = profile.get("account_age_days", 0)
+
+    if is_suspended or is_banned:
+        user_type = "recovery"
+        recommended_flow = "shield_first"
+        message = "Your account has been flagged. Let's help you understand what to avoid and rebuild safely."
+    elif total_karma < 500 or account_age_days < 90:
+        user_type = "new"
+        recommended_flow = "build_persona"
+        message = "You're starting fresh — let's build your voice and set up a strong persona before posting."
+    else:
+        user_type = "experienced"
+        recommended_flow = "import_history"
+        message = "You've got Reddit history to work with — let's import it and find what's working for you."
+
+    return {
+        "username": username,
+        "account_age_days": account_age_days,
+        "total_karma": total_karma,
+        "user_type": user_type,
+        "recommended_flow": recommended_flow,
+        "message": message,
+    }
 
 
 @router.post("/import/username")
@@ -386,6 +423,7 @@ def save_persona(req: PersonaRequest):
         "personality": {
             "native_english": False,
             "writing_style": "simple, direct, practical",
+            "goal": req.goal or "",
         },
     }
 

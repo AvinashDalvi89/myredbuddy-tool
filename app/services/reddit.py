@@ -47,6 +47,50 @@ def fetch_reddit_json(url: str, retries: int = 2) -> dict:
             time.sleep(1)
 
 
+def fetch_user_profile(username: str) -> Dict[str, Any]:
+    """
+    Fetch user profile info from Reddit's about.json endpoint.
+
+    Args:
+        username: Reddit username (without u/)
+
+    Returns:
+        Dict with account_age_days, link_karma, comment_karma, total_karma,
+        is_suspended, is_banned fields
+
+    Raises:
+        HTTPException: 404 if user not found, 500 on fetch failure
+    """
+    import time as _time
+    import urllib.error as _urllib_error
+
+    url = f"https://www.reddit.com/user/{username}/about.json"
+    req = urllib.request.Request(url, headers={"User-Agent": settings.USER_AGENT})
+
+    try:
+        with urllib.request.urlopen(req, timeout=15, context=ssl_ctx) as resp:
+            data = json.loads(resp.read().decode())
+    except _urllib_error.HTTPError as e:
+        if e.code == 404:
+            raise HTTPException(status_code=404, detail=f"User u/{username} not found")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch Reddit profile: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch Reddit profile: {str(e)}")
+
+    d = data.get("data", {})
+    created_utc = d.get("created_utc", 0)
+    account_age_days = int((_time.time() - created_utc) / 86400) if created_utc else 0
+
+    return {
+        "account_age_days": account_age_days,
+        "link_karma": d.get("link_karma", 0),
+        "comment_karma": d.get("comment_karma", 0),
+        "total_karma": d.get("total_karma", d.get("link_karma", 0) + d.get("comment_karma", 0)),
+        "is_suspended": d.get("is_suspended", False),
+        "is_banned": d.get("is_banned", False),
+    }
+
+
 def fetch_user_posts(
     username: str,
     limit: int = 50,
