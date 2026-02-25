@@ -10,6 +10,7 @@ MyRedBuddy is an action-oriented Reddit engagement tool that protects genuine us
 
 Reddit is unforgiving. One wrong post can destroy your karma, get you shadowbanned, or kill your reputation in a community you care about. MyRedBuddy gives you a safety net:
 
+- **No account required to start** - Use Community Guide, Pre-Post Checker, and Reputation Shield with zero Reddit history
 - **Pre-post protection** - Check content BEFORE you post, not after
 - **Learn from YOUR data** - See what works for YOU specifically
 - **Action-oriented** - Every insight has an immediate action button
@@ -18,13 +19,22 @@ Reddit is unforgiving. One wrong post can destroy your karma, get you shadowbann
 
 ## Features
 
-| Feature | What It Does | Action |
-|---------|--------------|--------|
-| **Shield Check** | Scans for ban triggers, AI detection, self-promo | → Fix issues before posting |
-| **Pattern Analysis** | Shows what tones/topics work for YOU | → Generate similar content |
-| **Comment Suggestions** | AI generates comments matching YOUR style | → Use winning patterns |
-| **Competitor Analysis** | Learn what works in any subreddit | → Apply to your posts |
-| **Removal Tracking** | Log removals, see patterns | → Avoid future mistakes |
+| Feature | What It Does | Needs Account? |
+|---------|--------------|----------------|
+| **Community Guide** | Culture briefing for any subreddit — vibe, unwritten rules, what gets removed | No |
+| **Pre-Post Checker** | Validate a draft before posting, get a score and rewrite | No |
+| **Reputation Shield** | Scans for ban triggers, AI detection, self-promo patterns | No |
+| **Competitor Analysis** | Learn what content performs best in any subreddit | No |
+| **Pattern Analysis** | Shows what tones/topics work for YOU specifically | Yes |
+| **Recommendations** | AI post ideas based on your history | Yes |
+| **Removal Insights** | Log removals, see patterns, avoid repeat mistakes | Yes |
+
+## Who Is This For?
+
+- **New to Reddit** — No post history yet? Start with Community Guide to understand any subreddit before your first post
+- **Getting banned often** — Use Reputation Shield and Pre-Post Checker without needing to import your history
+- **Experienced users** — Import your Reddit history for personalized insights, recommendations, and pattern analysis
+- **Lurkers** — Explore communities and validate posts without linking an account
 
 ## Quick Start
 
@@ -66,20 +76,35 @@ cd dashboard && npm run dev
 # → http://localhost:3000
 ```
 
-### 4. Import Your Data
+### 4. First Time? Two paths
 
-**Option A: By Username (quickest)**
+**Path A — No Reddit account / just exploring**
 
-Go to Dashboard → Setup → Enter your Reddit username → Import
+Open http://localhost:3000 — you will land on the Community Guide flow automatically.
+Enter any subreddit name to get a culture briefing before you post. No account or import needed.
 
-Or via API:
+Tools available without an account:
+- Community Guide (`/api/community/culture`)
+- Pre-Post Checker (`/api/validate`)
+- Reputation Shield (`/api/shield/check`)
+- Competitor Analysis (`/api/analyze`)
+
+**Path B — Import your Reddit history**
+
+Go to Dashboard → you will be guided through onboarding automatically.
+
+Enter your Reddit username:
+- If you already have a persona saved, onboarding skips directly to linking your account — no repeated setup steps
+- If it's your first time, you will go through a short persona setup (goal, background, expertise)
+
+Or import directly via API:
 ```bash
 curl -X POST "http://localhost:8000/api/import/username" \
   -H "Content-Type: application/json" \
   -d '{"username": "YOUR_REDDIT_USERNAME"}'
 ```
 
-**Option B: GDPR Export (complete history)**
+**Path C — GDPR Export (complete history)**
 
 For your full Reddit history:
 1. Go to https://www.reddit.com/settings/data-request
@@ -121,23 +146,37 @@ See `persona.example.json` for a full template.
 
 ## Dashboard
 
-The dashboard is **action-oriented** - every metric has buttons to take immediate action:
+The dashboard is **action-oriented** — every metric has buttons to take immediate action.
 
-### Overview Tab
-- See your performance metrics
-- Quick actions: Refresh, View Patterns, Copy Style, Find Posts
+### Community Guide *(no account needed)*
+Enter any subreddit and get a culture briefing:
+- Community vibe and tone
+- What gets upvoted vs removed
+- Unwritten rules not in the sidebar
+- 2-3 concrete first post ideas tailored to that community
+- New account tips (karma/age requirements)
 
-### Performance Tab
-- What Works vs What Doesn't
-- Actions: Copy Pattern, Generate Similar, Avoid This
+### Pre-Post Checker *(no account needed)*
+Paste a draft post or comment, pick the target subreddit, get:
+- Score out of 10
+- Strengths and issues
+- A rewritten version if score is below 7
+- Reputation Shield check runs at the same time
 
-### Analytics Tab
-- Breakdown by Tone, Topic, Subreddit
-- Actions: Filter, Generate with Tone, Find Opportunities
+### Reputation Shield *(no account needed)*
+Standalone content safety check — ban triggers, AI detection patterns, self-promotion signals.
 
-### Shield Tab
-- Pre-flight content checker
-- Actions: Auto-Fix, Humanize, Remove Promo
+### Competitor Analysis *(no account needed)*
+Analyze any subreddit to see what content performs best.
+
+### Dashboard / Overview *(account required)*
+See your performance metrics, top content, quick actions.
+
+### Recommendations *(account required)*
+AI-generated post ideas and comment strategies based on your history.
+
+### Removal Insights *(account required)*
+Log removals, see patterns across subreddits, avoid repeating mistakes.
 
 ## Customization
 
@@ -174,6 +213,7 @@ SHIELD_WEIGHT_LOW_EFFORT=15
 | `/health` | GET | Health check |
 | `/api/status` | GET | Check loaded data |
 | `/api/prompts/status` | GET | Check prompt configuration |
+| `/api/community/culture` | POST | Community Guide — culture briefing for any subreddit |
 | `/api/import/username` | POST | Import by Reddit username |
 | `/api/persona` | GET/POST | Get/Save your persona |
 | `/api/suggest` | POST | Get comment suggestions |
@@ -184,6 +224,13 @@ SHIELD_WEIGHT_LOW_EFFORT=15
 | `/api/insights/stats` | GET | Get removal patterns |
 
 ### Usage Examples
+
+**Get Community Guide (no account needed):**
+```bash
+curl -X POST "http://localhost:8000/api/community/culture" \
+  -H "Content-Type: application/json" \
+  -d '{"subreddit": "webdev", "limit": 50}'
+```
 
 **Get Comment Suggestions:**
 ```bash

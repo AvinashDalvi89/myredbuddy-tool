@@ -3942,8 +3942,9 @@ export default function Dashboard() {
             <nav className="space-y-1">
               {[
                 { id: "getting-started", label: "Getting Started", icon: <FiZap className="w-4 h-4" />, color: "text-orange-400" },
-                { id: "multiple-accounts", label: "Multiple Accounts", icon: <FiUser className="w-4 h-4" />, color: "text-purple-400" },
-                { id: "features", label: "Features Guide", icon: <FiBook className="w-4 h-4" />, color: "text-emerald-400" },
+                { id: "no-account", label: "No Account? Start Here", icon: <FiBook className="w-4 h-4" />, color: "text-purple-400" },
+                { id: "multiple-accounts", label: "Multiple Accounts", icon: <FiUser className="w-4 h-4" />, color: "text-blue-400" },
+                { id: "features", label: "Features Guide", icon: <FiLayers className="w-4 h-4" />, color: "text-emerald-400" },
                 { id: "data-safety", label: "Data Safety", icon: <FiDatabase className="w-4 h-4" />, color: "text-blue-400" },
                 { id: "troubleshooting", label: "Troubleshooting", icon: <FiAlertCircle className="w-4 h-4" />, color: "text-red-400" },
                 { id: "ethics", label: "Privacy & Ethics", icon: <FiAlertTriangle className="w-4 h-4" />, color: "text-amber-400" },
@@ -3996,31 +3997,110 @@ export default function Dashboard() {
               </div>
 
               <div className="bg-gray-800/30 rounded-lg p-4">
-                <h4 className="text-sm font-medium text-gray-200 mb-2">2. Import Your Data</h4>
-                <ol className="text-sm text-gray-400 space-y-2 list-decimal list-inside">
-                  <li>Go to the <button onClick={() => setTab("setup")} className="text-orange-400 hover:underline">Setup</button> tab</li>
-                  <li>Enter your Reddit username</li>
-                  <li>Check the confirmation box</li>
-                  <li>Click &quot;Import Data&quot;</li>
-                </ol>
+                <h4 className="text-sm font-medium text-gray-200 mb-3">2. Choose Your Path</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="bg-orange-500/10 border border-orange-500/25 rounded-lg p-3">
+                    <p className="text-xs font-semibold text-orange-400 mb-1">No account? Start here</p>
+                    <p className="text-xs text-gray-400 mb-2">Use Community Guide, Pre-Post Checker, and Shield — no Reddit history needed.</p>
+                    <button onClick={() => setTab("guide")} className="text-xs px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors">
+                      Open Community Guide →
+                    </button>
+                  </div>
+                  <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-3">
+                    <p className="text-xs font-semibold text-gray-300 mb-1">Have a Reddit account?</p>
+                    <p className="text-xs text-gray-400 mb-2">Import your history for personalized insights, recommendations, and pattern analysis.</p>
+                    <button onClick={() => setTab("setup")} className="text-xs px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-colors">
+                      Go to Setup →
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="bg-gray-800/30 rounded-lg p-4">
-                <h4 className="text-sm font-medium text-gray-200 mb-2">3. Explore Your Analytics</h4>
+                <h4 className="text-sm font-medium text-gray-200 mb-2">3. Explore</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                  <button onClick={() => setTab("guide")} className="text-left p-2 rounded bg-gray-900/50 hover:bg-gray-900 text-gray-400">
+                    <span className="text-orange-400">Community Guide</span> — understand any subreddit first
+                  </button>
+                  <button onClick={() => setTab("validator")} className="text-left p-2 rounded bg-gray-900/50 hover:bg-gray-900 text-gray-400">
+                    <span className="text-emerald-400">Pre-Post Checker</span> — validate before you post
+                  </button>
                   <button onClick={() => setTab("dashboard")} className="text-left p-2 rounded bg-gray-900/50 hover:bg-gray-900 text-gray-400">
-                    <span className="text-blue-400">Dashboard</span> - View what works vs what doesn&apos;t
+                    <span className="text-blue-400">Dashboard</span> — view what works vs what doesn&apos;t
                   </button>
                   <button onClick={() => setTab("recommendations")} className="text-left p-2 rounded bg-gray-900/50 hover:bg-gray-900 text-gray-400">
-                    <span className="text-purple-400">Recommendations</span> - Get AI-powered suggestions
-                  </button>
-                  <button onClick={() => setTab("shield")} className="text-left p-2 rounded bg-gray-900/50 hover:bg-gray-900 text-gray-400">
-                    <span className="text-emerald-400">Shield</span> - Check content before posting
-                  </button>
-                  <button onClick={() => setTab("insights")} className="text-left p-2 rounded bg-gray-900/50 hover:bg-gray-900 text-gray-400">
-                    <span className="text-red-400">Removal Insights</span> - Track content removals
+                    <span className="text-purple-400">Recommendations</span> — AI-powered post ideas
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* No Account Section */}
+          <div id="help-no-account" className="bg-gray-900/50 border border-purple-500/25 rounded-xl p-6 scroll-mt-4">
+            <h3 className="text-lg font-semibold text-purple-400 mb-1 flex items-center gap-2">
+              <FiBook className="w-5 h-5" />
+              No Account? Start Here
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">These tools work with zero Reddit history — no import needed.</p>
+
+            <div className="space-y-3">
+              <div className="bg-gray-800/30 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <FiBook className="w-4 h-4 text-orange-400" />
+                    <h4 className="text-sm font-medium text-gray-200">Community Guide</h4>
+                  </div>
+                  <button onClick={() => setTab("guide")} className="text-xs px-2.5 py-1 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 rounded-lg transition-colors">Open →</button>
+                </div>
+                <p className="text-xs text-gray-400 mb-2">Enter any subreddit and get a full culture briefing before your first post.</p>
+                <ul className="text-xs text-gray-500 space-y-1">
+                  <li>• Community vibe and tone</li>
+                  <li>• What gets upvoted vs removed</li>
+                  <li>• Unwritten rules not in the sidebar</li>
+                  <li>• 2–3 concrete first post ideas for that community</li>
+                  <li>• New account karma/age tips</li>
+                </ul>
+              </div>
+
+              <div className="bg-gray-800/30 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <FiMessageSquare className="w-4 h-4 text-emerald-400" />
+                    <h4 className="text-sm font-medium text-gray-200">Pre-Post Checker</h4>
+                  </div>
+                  <button onClick={() => setTab("validator")} className="text-xs px-2.5 py-1 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-lg transition-colors">Open →</button>
+                </div>
+                <p className="text-xs text-gray-400">Paste your draft, pick the target subreddit, get a score and a rewrite suggestion. Reputation Shield runs at the same time.</p>
+              </div>
+
+              <div className="bg-gray-800/30 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <FiShield className="w-4 h-4 text-blue-400" />
+                    <h4 className="text-sm font-medium text-gray-200">Reputation Shield</h4>
+                  </div>
+                  <button onClick={() => setTab("shield")} className="text-xs px-2.5 py-1 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded-lg transition-colors">Open →</button>
+                </div>
+                <p className="text-xs text-gray-400">Check any text for ban triggers, AI-sounding patterns, and self-promotion signals before posting.</p>
+              </div>
+
+              <div className="bg-gray-800/30 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <FiSearch className="w-4 h-4 text-cyan-400" />
+                    <h4 className="text-sm font-medium text-gray-200">Competitor Analysis</h4>
+                  </div>
+                  <button onClick={() => setTab("competitors")} className="text-xs px-2.5 py-1 bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 rounded-lg transition-colors">Open →</button>
+                </div>
+                <p className="text-xs text-gray-400">Analyze top posts from any subreddit to understand what content performs best there.</p>
+              </div>
+
+              <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-3 flex items-start gap-3">
+                <FiInfo className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-gray-400">
+                  <strong className="text-purple-300">Tip:</strong> Use Community Guide first to understand the subreddit, then Pre-Post Checker to validate your draft. This two-step flow works without any account setup.
+                </p>
               </div>
             </div>
           </div>
@@ -4099,6 +4179,26 @@ export default function Dashboard() {
             </h3>
 
             <div className="space-y-4">
+              {/* Community Guide */}
+              <div className="bg-gray-800/30 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <FiBook className="w-4 h-4 text-orange-400" />
+                    <h4 className="text-sm font-medium text-gray-200">Community Guide</h4>
+                    <span className="text-[10px] px-1.5 py-0.5 bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded-full">No account needed</span>
+                  </div>
+                  <button onClick={() => setTab("guide")} className="text-xs px-2.5 py-1 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 rounded-lg transition-colors">Open →</button>
+                </div>
+                <p className="text-sm text-gray-400 mb-2">Understand any subreddit&apos;s culture before you post.</p>
+                <ul className="text-xs text-gray-500 space-y-1">
+                  <li>• <strong className="text-gray-400">Community Vibe:</strong> Tone and personality of the subreddit</li>
+                  <li>• <strong className="text-gray-400">What Gets Upvoted:</strong> Content types that perform well</li>
+                  <li>• <strong className="text-gray-400">Watch Out For:</strong> Common removal triggers</li>
+                  <li>• <strong className="text-gray-400">Unwritten Rules:</strong> Cultural norms not in the sidebar</li>
+                  <li>• <strong className="text-gray-400">How to Start:</strong> 2–3 concrete first post ideas</li>
+                </ul>
+              </div>
+
               {/* Dashboard */}
               <div className="bg-gray-800/30 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
