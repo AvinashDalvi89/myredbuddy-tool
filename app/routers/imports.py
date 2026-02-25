@@ -2,6 +2,7 @@
 Data Import Endpoints
 """
 
+import asyncio
 import time
 from fastapi import APIRouter, HTTPException
 
@@ -68,7 +69,7 @@ def onboarding_check(req: OnboardingCheckRequest):
 
 
 @router.post("/import/username")
-def import_by_username(req: ImportUsernameRequest):
+async def import_by_username(req: ImportUsernameRequest):
     """
     Import Reddit data by username using public JSON endpoint.
     No authentication required - fetches public data only.
@@ -98,40 +99,34 @@ def import_by_username(req: ImportUsernameRequest):
     new_comments = []
     updated_comments = 0
 
-    # Fetch posts
-    try:
-        posts_data = fetch_user_posts(username, limit=req.posts_limit, sort="new")
+    # Fetch posts and comments in parallel
+    posts_data, comments_data = await asyncio.gather(
+        asyncio.to_thread(fetch_user_posts, username, req.posts_limit, "new"),
+        asyncio.to_thread(fetch_user_comments, username, req.comments_limit, "new"),
+        return_exceptions=True,
+    )
 
+    # Process posts
+    if not isinstance(posts_data, Exception):
         for p in posts_data:
             post_item = process_post_for_storage(p)
             post_id = post_item.get("id")
-
             if post_id and post_id in existing_posts_by_id:
                 existing_posts_by_id[post_id].update(post_item)
                 updated_posts += 1
             else:
                 new_posts.append(post_item)
-    except Exception:
-        pass  # Continue even if posts fail
 
-    # Small delay to avoid rate limiting
-    time.sleep(0.5)
-
-    # Fetch comments
-    try:
-        comments_data = fetch_user_comments(username, limit=req.comments_limit, sort="new")
-
+    # Process comments
+    if not isinstance(comments_data, Exception):
         for c in comments_data:
             comment_item = process_comment_for_storage(c)
             comment_id = comment_item.get("id")
-
             if comment_id and comment_id in existing_comments_by_id:
                 existing_comments_by_id[comment_id].update(comment_item)
                 updated_comments += 1
             else:
                 new_comments.append(comment_item)
-    except Exception:
-        pass
 
     if not new_posts and not new_comments and not updated_posts and not updated_comments:
         raise HTTPException(
@@ -182,7 +177,7 @@ def import_by_username(req: ImportUsernameRequest):
 
 
 @router.post("/refresh")
-def refresh_data():
+async def refresh_data():
     """
     Refresh data for the active profile.
     Fetches latest posts/comments from Reddit, updates stats,
@@ -209,11 +204,16 @@ def refresh_data():
     fetched_comment_ids = set()
     removals_detected = []
 
-    try:
-        posts_data = fetch_user_posts(active_profile, limit=100, sort="new")
-        for p in posts_data:
+    # Fetch posts and comments in parallel
+    posts_result, comments_result = await asyncio.gather(
+        asyncio.to_thread(fetch_user_posts, active_profile, 100, "new"),
+        asyncio.to_thread(fetch_user_comments, active_profile, 100, "new"),
+        return_exceptions=True,
+    )
+
+    if not isinstance(posts_result, Exception):
+        for p in posts_result:
             fetched_post_ids.add(p.get("id"))
-            # Check for [removed] or [deleted] content
             if p.get("selftext") in ["[removed]", "[deleted]"]:
                 removals_detected.append({
                     "id": p.get("id"),
@@ -222,16 +222,10 @@ def refresh_data():
                     "title": p.get("title", ""),
                     "reason": "content_removed"
                 })
-    except Exception:
-        pass
 
-    time.sleep(0.5)
-
-    try:
-        comments_data = fetch_user_comments(active_profile, limit=100, sort="new")
-        for c in comments_data:
+    if not isinstance(comments_result, Exception):
+        for c in comments_result:
             fetched_comment_ids.add(c.get("id"))
-            # Check for [removed] or [deleted] content
             if c.get("body") in ["[removed]", "[deleted]"]:
                 removals_detected.append({
                     "id": c.get("id"),
@@ -240,8 +234,6 @@ def refresh_data():
                     "content": c.get("link_title", ""),
                     "reason": "content_removed"
                 })
-    except Exception:
-        pass
 
     # Detect items that disappeared from profile (might be removed/deleted)
     # Only flag if we fetched enough items (Reddit limits to 100)
@@ -299,7 +291,7 @@ def refresh_data():
     # Now do the regular import/merge
     from app.models import ImportUsernameRequest
     req = ImportUsernameRequest(username=active_profile)
-    result = import_by_username(req)
+    result = await import_by_username(req)
 
     # Add removal detection info to result
     result["removals_detected"] = len(removals_detected)

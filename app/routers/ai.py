@@ -2,6 +2,7 @@
 AI-Powered Analysis and Suggestion Endpoints
 """
 
+import asyncio
 import time
 from fastapi import APIRouter, HTTPException
 
@@ -185,14 +186,16 @@ Be specific to r/{subreddit}. Return ONLY valid JSON."""
 
 
 @router.post("/validate")
-def validate_content(req: ValidateRequest):
+async def validate_content(req: ValidateRequest):
     """
     Validate a draft post/comment using AI analysis.
     Checks against framework, persona, and subreddit rules.
     """
-    framework = load_framework()
-    persona = load_persona()
-    rules = load_subreddit_rules(req.subreddit)
+    framework, persona, rules = await asyncio.gather(
+        asyncio.to_thread(load_framework),
+        asyncio.to_thread(load_persona),
+        asyncio.to_thread(load_subreddit_rules, req.subreddit),
+    )
     rules_text = format_subreddit_rules(rules)
 
     # Build context from user's data
