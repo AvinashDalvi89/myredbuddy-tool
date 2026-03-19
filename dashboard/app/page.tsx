@@ -1332,23 +1332,35 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subreddit: competitorSub, limit: 50 }),
       });
-      const data = await res.json();
 
-      const posts: Item[] = data.top_posts.map((p: {title: string; content: string; ups: number}) => ({
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("[competitor] HTTP error", res.status, errText);
+        setCompetitorData(null);
+        setCompetitorAnalysis(`Error: API returned ${res.status}. Check the api.py terminal for details.`);
+        setCompetitorLoading(false);
+        return;
+      }
+
+      const data = await res.json();
+      console.log("[competitor] API response:", data);
+
+      const posts: Item[] = (data.posts || []).map((p: {title: string; content: string; ups: number; tones?: string[]; topics?: string[]}) => ({
         type: "post",
         subreddit: competitorSub,
         title: p.title,
         content: p.content || "",
         ups: p.ups,
-        tones: [],
-        topics: [],
+        tones: p.tones || [],
+        topics: p.topics || [],
       }));
 
-      setCompetitorData({ posts, tone_stats: {}, topic_stats: {} });
-      setCompetitorAnalysis(data.analysis);
-    } catch {
+      setCompetitorData({ posts, tone_stats: data.tone_stats || {}, topic_stats: data.topic_stats || {} });
+      setCompetitorAnalysis(data.analysis || "");
+    } catch (err) {
+      console.error("[competitor] fetch error:", err);
       setCompetitorData(null);
-      setCompetitorAnalysis("Error: Could not connect to API. Make sure api.py is running on port 8000.");
+      setCompetitorAnalysis(`Error: Could not connect to API. Make sure api.py is running on port 8000.\nDetails: ${err instanceof Error ? err.message : String(err)}`);
     }
     setCompetitorLoading(false);
   };
@@ -2808,22 +2820,86 @@ export default function Dashboard() {
           )}
 
           {competitorData && !competitorLoading && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-300">
-                Top {competitorData.posts.length} posts from r/{competitorSub}
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {competitorData.posts.slice(0, 10).map((post, idx) => (
-                  <div key={idx} className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 flex gap-3">
-                    <div className="flex-shrink-0 w-12 h-12 rounded-full border-2 border-emerald-500 flex items-center justify-center font-bold text-emerald-400 text-sm">
-                      {post.ups}
+            <div className="space-y-6">
+              {/* Top Posts */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-300">
+                  Top {competitorData.posts.length} posts from r/{competitorSub}
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {competitorData.posts.slice(0, 10).map((post, idx) => (
+                    <div key={idx} className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 flex gap-3">
+                      <div className="flex-shrink-0 w-12 h-12 rounded-full border-2 border-emerald-500 flex items-center justify-center font-bold text-emerald-400 text-sm">
+                        {post.ups}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-gray-200 font-medium line-clamp-2">{post.title}</p>
+                        {post.tones?.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {post.tones.slice(0, 3).map((t) => (
+                              <span key={t} className="text-xs px-1.5 py-0.5 bg-orange-500/10 text-orange-400 rounded">{t}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm text-gray-200 font-medium line-clamp-2">{post.title}</p>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
+
+              {/* Tone & Topic Stats */}
+              {(Object.keys(competitorData.tone_stats).length > 0 || Object.keys(competitorData.topic_stats).length > 0) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {Object.keys(competitorData.tone_stats).length > 0 && (
+                    <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+                      <h4 className="text-sm font-semibold text-gray-300 mb-3">Top Tones by Avg Upvotes</h4>
+                      <div className="space-y-2">
+                        {Object.entries(competitorData.tone_stats)
+                          .sort((a, b) => b[1].avg - a[1].avg)
+                          .slice(0, 6)
+                          .map(([tone, stat]) => (
+                            <div key={tone} className="flex items-center justify-between">
+                              <span className="text-xs text-gray-400 capitalize">{tone}</span>
+                              <div className="flex items-center gap-2">
+                                <div className="w-20 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-orange-500 rounded-full"
+                                    style={{ width: `${Math.min(100, (stat.avg / (Object.values(competitorData.tone_stats).reduce((m, s) => Math.max(m, s.avg), 1))) * 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs text-emerald-400 w-8 text-right">{stat.avg}</span>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                  {Object.keys(competitorData.topic_stats).length > 0 && (
+                    <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+                      <h4 className="text-sm font-semibold text-gray-300 mb-3">Top Topics by Avg Upvotes</h4>
+                      <div className="space-y-2">
+                        {Object.entries(competitorData.topic_stats)
+                          .sort((a, b) => b[1].avg - a[1].avg)
+                          .slice(0, 6)
+                          .map(([topic, stat]) => (
+                            <div key={topic} className="flex items-center justify-between">
+                              <span className="text-xs text-gray-400 capitalize">{topic}</span>
+                              <div className="flex items-center gap-2">
+                                <div className="w-20 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-cyan-500 rounded-full"
+                                    style={{ width: `${Math.min(100, (stat.avg / (Object.values(competitorData.topic_stats).reduce((m, s) => Math.max(m, s.avg), 1))) * 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs text-emerald-400 w-8 text-right">{stat.avg}</span>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
